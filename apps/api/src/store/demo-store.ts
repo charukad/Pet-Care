@@ -70,6 +70,40 @@ export type BookingView = {
   };
 };
 
+export type ChatMessageRecord = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  createdAt: string;
+};
+
+export type ChatMessageView = {
+  id: string;
+  conversationId: string;
+  content: string;
+  createdAt: string;
+  sender: {
+    id: string;
+    name: string;
+    role: Role;
+  };
+};
+
+export type ConversationView = {
+  id: string;
+  counterpart: {
+    id: string;
+    name: string;
+    role: "doctor" | "user";
+    specialization?: string;
+    location?: string;
+  };
+  bookingCount: number;
+  lastMessage?: ChatMessageView;
+  lastActivityAt: string;
+};
+
 type CreatePetInput = {
   userId: string;
   name: string;
@@ -93,6 +127,12 @@ type UpdateBookingStatusInput = {
   doctorProfileId: string;
   status: "accepted" | "rejected" | "completed";
   rejectionReason?: string;
+};
+
+type CreateChatMessageInput = {
+  actor: AuthenticatedUser;
+  conversationId: string;
+  content: string;
 };
 
 function createTimestamp() {
@@ -206,12 +246,35 @@ const bookings: BookingRecord[] = [
   },
 ];
 
+const chatMessages: ChatMessageRecord[] = [
+  {
+    id: "message-seed-1",
+    conversationId: "user-sarah-perera__dr-amara-jayasinghe",
+    senderId: "user-sarah-perera",
+    content: "Hi doctor, I wanted to share a little more detail before the consultation.",
+    createdAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
+  },
+  {
+    id: "message-seed-2",
+    conversationId: "user-sarah-perera__dr-amara-jayasinghe",
+    senderId: "doctor-amara-jayasinghe",
+    content: "Of course. Please let me know what changes you've noticed with Milo.",
+    createdAt: new Date(Date.now() - 1000 * 60 * 28).toISOString(),
+  },
+];
+
 function findUserRecordById(userId: string) {
   return users.find((user) => user.id === userId);
 }
 
 function findDoctorProfile(doctorProfileId: string) {
   return mockDoctors.find((doctor) => doctor.id === doctorProfileId);
+}
+
+function findDoctorUserByProfileId(doctorProfileId: string) {
+  return users.find(
+    (user) => user.role === "doctor" && user.doctorProfileId === doctorProfileId,
+  );
 }
 
 function findPetRecord(petId: string) {
@@ -222,6 +285,33 @@ function sortBookingsBySchedule(items: BookingRecord[]) {
   return [...items].sort((left, right) =>
     left.scheduledAt.localeCompare(right.scheduledAt),
   );
+}
+
+function sortMessagesByCreatedAt(items: ChatMessageRecord[]) {
+  return [...items].sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt),
+  );
+}
+
+function createConversationId(userId: string, doctorProfileId: string) {
+  return `${userId}__${doctorProfileId}`;
+}
+
+function parseConversationId(conversationId: string) {
+  const [userId, doctorProfileId] = conversationId.split("__");
+
+  if (!userId || !doctorProfileId) {
+    throw new HttpError(400, "Conversation id is invalid.");
+  }
+
+  return {
+    userId,
+    doctorProfileId,
+  };
+}
+
+function isActiveRelationshipBooking(booking: BookingRecord) {
+  return booking.status !== "rejected" && booking.status !== "cancelled";
 }
 
 function expandBooking(booking: BookingRecord): BookingView {
@@ -259,6 +349,70 @@ function expandBooking(booking: BookingRecord): BookingView {
       name: owner.name,
       email: owner.email,
     },
+  };
+}
+
+function expandChatMessage(message: ChatMessageRecord): ChatMessageView {
+  const sender = findUserRecordById(message.senderId);
+
+  if (!sender) {
+    throw new HttpError(500, "Message references a missing sender.");
+  }
+
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    content: message.content,
+    createdAt: message.createdAt,
+    sender: {
+      id: sender.id,
+      name: sender.name,
+      role: sender.role,
+    },
+  };
+}
+
+function getConversationBookings(conversationId: string) {
+  const { userId, doctorProfileId } = parseConversationId(conversationId);
+
+  return bookings.filter(
+    (booking) =>
+      booking.userId === userId &&
+      booking.doctorProfileId === doctorProfileId &&
+      isActiveRelationshipBooking(booking),
+  );
+}
+
+function assertConversationAccess(
+  actor: AuthenticatedUser,
+  conversationId: string,
+) {
+  const { userId, doctorProfileId } = parseConversationId(conversationId);
+  const relatedBookings = getConversationBookings(conversationId);
+
+  if (relatedBookings.length === 0) {
+    throw new HttpError(
+      403,
+      "Chat is only available for active doctor-pet owner booking relationships.",
+    );
+  }
+
+  if (actor.role === "user" && actor.id !== userId) {
+    throw new HttpError(403, "You cannot access this conversation.");
+  }
+
+  if (actor.role === "doctor" && actor.doctorProfileId !== doctorProfileId) {
+    throw new HttpError(403, "You cannot access this conversation.");
+  }
+
+  if (actor.role === "admin") {
+    throw new HttpError(403, "Admin users cannot access direct conversations.");
+  }
+
+  return {
+    userId,
+    doctorProfileId,
+    relatedBookings,
   };
 }
 
@@ -471,5 +625,148 @@ export function getAdminOverview() {
       pendingBookings,
     },
     recentBookings: listAllBookings().slice(-10).reverse(),
+  };
+}
+
+export function listConversationsForActor(actor: AuthenticatedUser) {
+  const relatedBookings = bookings.filter((booking) => {
+    if (!isActiveRelationshipBooking(booking)) {
+      return false;
+    }
+
+    if (actor.role === "user") {
+      return booking.userId === actor.id;
+    }
+
+    if (actor.role === "doctor") {
+      return booking.doctorProfileId === actor.doctorProfileId;
+    }
+
+    return false;
+  });
+
+  const uniqueConversationIds = Array.from(
+    new Set(
+      relatedBookings.map((booking) =>
+        createConversationId(booking.userId, booking.doctorProfileId),
+      ),
+    ),
+  );
+
+  const mappedConversations: Array<ConversationView | null> = uniqueConversationIds.map(
+    (conversationId) => {
+      const { userId, doctorProfileId } = parseConversationId(conversationId);
+      const owner = findUserRecordById(userId);
+      const doctor = findDoctorProfile(doctorProfileId);
+      const relatedConversationBookings = getConversationBookings(conversationId);
+      const lastMessage = sortMessagesByCreatedAt(
+        chatMessages.filter((message) => message.conversationId === conversationId),
+      ).at(-1);
+
+      if (!owner || !doctor || relatedConversationBookings.length === 0) {
+        return null;
+      }
+
+      const counterpart =
+        actor.role === "user"
+          ? {
+              id: doctor.id,
+              name: doctor.name,
+              role: "doctor" as const,
+              specialization: doctor.specialization,
+              location: doctor.location,
+            }
+          : {
+              id: owner.id,
+              name: owner.name,
+              role: "user" as const,
+            };
+
+      const latestBooking = sortBookingsBySchedule(relatedConversationBookings).at(-1);
+      const lastActivityAt =
+        lastMessage?.createdAt ?? latestBooking?.updatedAt ?? createTimestamp();
+
+      return {
+        id: conversationId,
+        counterpart,
+        bookingCount: relatedConversationBookings.length,
+        lastMessage: lastMessage ? expandChatMessage(lastMessage) : undefined,
+        lastActivityAt,
+      } satisfies ConversationView;
+    },
+  );
+
+  return mappedConversations
+    .filter((conversation): conversation is ConversationView => conversation !== null)
+    .sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt));
+}
+
+export function listMessagesForConversation(
+  actor: AuthenticatedUser,
+  conversationId: string,
+) {
+  assertConversationAccess(actor, conversationId);
+
+  return sortMessagesByCreatedAt(
+    chatMessages.filter((message) => message.conversationId === conversationId),
+  ).map(expandChatMessage);
+}
+
+export function createChatMessage(input: CreateChatMessageInput) {
+  const { actor, conversationId } = input;
+  const { userId, doctorProfileId } = assertConversationAccess(actor, conversationId);
+  const normalizedContent = input.content.trim();
+
+  if (!normalizedContent) {
+    throw new HttpError(400, "Message content is required.");
+  }
+
+  if (actor.role === "user" && actor.id !== userId) {
+    throw new HttpError(403, "You cannot send messages in this conversation.");
+  }
+
+  if (actor.role === "doctor" && actor.doctorProfileId !== doctorProfileId) {
+    throw new HttpError(403, "You cannot send messages in this conversation.");
+  }
+
+  const message: ChatMessageRecord = {
+    id: randomUUID(),
+    conversationId,
+    senderId: actor.id,
+    content: normalizedContent,
+    createdAt: createTimestamp(),
+  };
+
+  chatMessages.push(message);
+
+  return expandChatMessage(message);
+}
+
+export function buildConversationIdForDoctorAndUser(
+  userId: string,
+  doctorProfileId: string,
+) {
+  return createConversationId(userId, doctorProfileId);
+}
+
+export function getConversationDetails(conversationId: string) {
+  const { userId, doctorProfileId } = parseConversationId(conversationId);
+  const owner = findUserRecordById(userId);
+  const doctor = findDoctorProfile(doctorProfileId);
+  const doctorUser = findDoctorUserByProfileId(doctorProfileId);
+
+  if (!owner || !doctor || !doctorUser) {
+    throw new HttpError(404, "Conversation could not be resolved.");
+  }
+
+  return {
+    owner: sanitizeUser(owner),
+    doctor: {
+      id: doctor.id,
+      name: doctor.name,
+      specialization: doctor.specialization,
+      location: doctor.location,
+      userId: doctorUser.id,
+    },
   };
 }

@@ -75,3 +75,43 @@ export type AdminOverview = {
   };
   recentBookings: Booking[];
 };
+
+export type ChatMessage = {
+  id: string;
+  conversationId: string;
+  content: string;
+  createdAt: string;
+  sender: {
+    id: string;
+    name: string;
+    role: UserRole;
+  };
+};
+
+export type Conversation = {
+  id: string;
+  counterpart: {
+    id: string;
+    name: string;
+    role: "doctor" | "user";
+    specialization?: string;
+    location?: string;
+  };
+  bookingCount: number;
+  lastMessage?: ChatMessage;
+  lastActivityAt: string;
+};
+
+export type ConversationDetails = {
+  details: {
+    owner: AuthUser;
+    doctor: {
+      id: string;
+      name: string;
+      specialization: string;
+      location: string;
+      userId: string;
+    };
+  };
+  messages: ChatMessage[];
+};

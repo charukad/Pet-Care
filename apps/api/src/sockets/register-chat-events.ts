@@ -3,9 +3,13 @@ import { Server } from "socket.io";
 import { env } from "../config/env";
 
 type ChatPayload = {
+  id: string;
   conversationId: string;
-  message: string;
+  content: string;
   senderId: string;
+  senderName: string;
+  senderRole: "user" | "doctor";
+  createdAt: string;
 };
 
 export function registerSocketServer(httpServer: HttpServer) {
@@ -21,11 +25,12 @@ export function registerSocketServer(httpServer: HttpServer) {
       socket.join(conversationId);
     });
 
+    socket.on("chat:leave", (conversationId: string) => {
+      socket.leave(conversationId);
+    });
+
     socket.on("chat:message", (payload: ChatPayload) => {
-      io.to(payload.conversationId).emit("chat:message", {
-        ...payload,
-        createdAt: new Date().toISOString(),
-      });
+      io.to(payload.conversationId).emit("chat:message", payload);
     });
   });
 
