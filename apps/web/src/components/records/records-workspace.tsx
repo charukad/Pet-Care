@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BookingStatusTimeline } from "@/components/booking/booking-status-timeline";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
 import type { MedicalHistoryPet } from "@/types/app";
@@ -164,12 +165,19 @@ export function RecordsWorkspace() {
                           key={booking.id}
                           className="rounded-[1.35rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] p-4"
                         >
-                          <p className="font-semibold text-[color:var(--pc-ink)]">
-                            {booking.doctor.name}
-                          </p>
-                          <p className="mt-1 text-sm text-[color:var(--pc-muted)]">
-                            {booking.doctor.specialization} · {booking.consultationMode}
-                          </p>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="font-semibold text-[color:var(--pc-ink)]">
+                                {booking.doctor.name}
+                              </p>
+                              <p className="mt-1 text-sm text-[color:var(--pc-muted)]">
+                                {booking.doctor.specialization} · {booking.consultationMode}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--pc-muted)]">
+                              {booking.status}
+                            </span>
+                          </div>
                           <p className="mt-2 text-sm text-[color:var(--pc-muted)]">
                             {formatDateTime(booking.scheduledAt)}
                           </p>
@@ -178,6 +186,7 @@ export function RecordsWorkspace() {
                               {booking.notes}
                             </p>
                           ) : null}
+                          <BookingStatusTimeline history={booking.statusHistory} />
                         </div>
                       ))
                     ) : (

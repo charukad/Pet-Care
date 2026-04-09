@@ -37,6 +37,14 @@ export type BookingStatus =
   | "completed"
   | "cancelled";
 
+export type BookingStatusEvent = {
+  status: BookingStatus;
+  changedAt: string;
+  actorRole: UserRole;
+  actorName: string;
+  note?: string;
+};
+
 export type Booking = {
   id: string;
   scheduledAt: string;
@@ -44,6 +52,7 @@ export type Booking = {
   status: BookingStatus;
   notes?: string;
   rejectionReason?: string;
+  statusHistory: BookingStatusEvent[];
   createdAt: string;
   updatedAt: string;
   doctor: {

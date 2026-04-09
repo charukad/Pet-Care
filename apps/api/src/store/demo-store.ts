@@ -28,6 +28,14 @@ export type BookingStatus =
   | "completed"
   | "cancelled";
 
+export type BookingStatusHistoryEntry = {
+  status: BookingStatus;
+  changedAt: string;
+  actorRole: Role;
+  actorName: string;
+  note?: string;
+};
+
 export type BookingRecord = {
   id: string;
   userId: string;
@@ -38,6 +46,7 @@ export type BookingRecord = {
   status: BookingStatus;
   notes?: string;
   rejectionReason?: string;
+  statusHistory: BookingStatusHistoryEntry[];
   createdAt: string;
   updatedAt: string;
 };
@@ -49,6 +58,7 @@ export type BookingView = {
   status: BookingStatus;
   notes?: string;
   rejectionReason?: string;
+  statusHistory: BookingStatusHistoryEntry[];
   createdAt: string;
   updatedAt: string;
   doctor: {
@@ -218,6 +228,22 @@ function createTimestamp() {
   return new Date().toISOString();
 }
 
+function createBookingStatusHistoryEntry(input: {
+  status: BookingStatus;
+  actorRole: Role;
+  actorName: string;
+  changedAt?: string;
+  note?: string;
+}) {
+  return {
+    status: input.status,
+    actorRole: input.actorRole,
+    actorName: input.actorName,
+    changedAt: input.changedAt ?? createTimestamp(),
+    note: normalizeOptionalText(input.note),
+  } satisfies BookingStatusHistoryEntry;
+}
+
 function normalizeOptionalText(value?: string) {
   const trimmed = value?.trim();
 
@@ -320,6 +346,13 @@ const bookings: BookingRecord[] = [
     consultationMode: "Video",
     status: "pending",
     notes: "Dry skin patches on both ears for the last week.",
+    statusHistory: [
+      createBookingStatusHistoryEntry({
+        status: "pending",
+        actorRole: "user",
+        actorName: "Sarah Perera",
+      }),
+    ],
     createdAt: createTimestamp(),
     updatedAt: createTimestamp(),
   },
@@ -411,6 +444,7 @@ function expandBooking(booking: BookingRecord): BookingView {
     status: booking.status,
     notes: booking.notes,
     rejectionReason: booking.rejectionReason,
+    statusHistory: booking.statusHistory,
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
     doctor: {
@@ -679,6 +713,14 @@ export function createBooking(input: CreateBookingInput) {
     consultationMode: input.consultationMode,
     status: "pending",
     notes: normalizeOptionalText(input.notes),
+    statusHistory: [
+      createBookingStatusHistoryEntry({
+        status: "pending",
+        actorRole: owner.role,
+        actorName: owner.name,
+        changedAt: timestamp,
+      }),
+    ],
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -727,12 +769,32 @@ export function updateBookingStatus(input: UpdateBookingStatusInput) {
     throw new HttpError(400, "Only accepted bookings can be marked completed.");
   }
 
+  const doctor = findDoctorUserByProfileId(input.doctorProfileId);
+
+  if (!doctor) {
+    throw new HttpError(404, "Doctor account could not be found.");
+  }
+
   booking.status = input.status;
   booking.rejectionReason =
     input.status === "rejected"
       ? normalizeOptionalText(input.rejectionReason)
       : undefined;
   booking.updatedAt = createTimestamp();
+  booking.statusHistory.push(
+    createBookingStatusHistoryEntry({
+      status: input.status,
+      actorRole: doctor.role,
+      actorName: doctor.name,
+      changedAt: booking.updatedAt,
+      note:
+        input.status === "rejected"
+          ? input.rejectionReason
+          : input.status === "completed"
+            ? "Consultation marked as completed."
+            : "Booking accepted by doctor.",
+    }),
+  );
 
   return expandBooking(booking);
 }

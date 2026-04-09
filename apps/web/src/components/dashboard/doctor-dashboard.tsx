@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BookingStatusTimeline } from "@/components/booking/booking-status-timeline";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
 import type { Booking, Prescription } from "@/types/app";
@@ -26,6 +27,10 @@ function formatDateTime(isoString: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(isoString));
+}
+
+function formatDateInput(isoString: string) {
+  return new Intl.DateTimeFormat("en-CA").format(new Date(isoString));
 }
 
 function createMedicineDraft(): MedicineDraft {
@@ -57,6 +62,9 @@ export function DoctorDashboard() {
   const [hasLoadedDashboard, setHasLoadedDashboard] = useState(false);
   const [isUpdatingBookingId, setIsUpdatingBookingId] = useState<string | null>(null);
   const [isSubmittingBookingId, setIsSubmittingBookingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<Booking["status"] | "all">("all");
+  const [patientQuery, setPatientQuery] = useState("");
+  const [scheduledDateFilter, setScheduledDateFilter] = useState("");
   const shouldLoadDashboard = Boolean(session?.token && user?.role === "doctor");
 
   useEffect(() => {
@@ -315,6 +323,23 @@ export function DoctorDashboard() {
     );
   }
 
+  const normalizedPatientQuery = patientQuery.trim().toLowerCase();
+  const filteredBookings = bookings.filter((booking) => {
+    const matchesStatus =
+      statusFilter === "all" ? true : booking.status === statusFilter;
+    const matchesPatient =
+      normalizedPatientQuery.length === 0
+        ? true
+        : `${booking.owner.name} ${booking.owner.email} ${booking.pet.name}`
+            .toLowerCase()
+            .includes(normalizedPatientQuery);
+    const matchesDate = scheduledDateFilter
+      ? formatDateInput(booking.scheduledAt) === scheduledDateFilter
+      : true;
+
+    return matchesStatus && matchesPatient && matchesDate;
+  });
+
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-14 sm:px-6 lg:px-8">
       <section className="space-y-4">
@@ -357,9 +382,79 @@ export function DoctorDashboard() {
         </div>
       </section>
 
+      <section className="rounded-[2rem] border border-[color:var(--pc-line)] bg-white/90 p-6 shadow-[0_24px_80px_rgba(8,47,73,0.08)]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-[color:var(--pc-ink)]">
+              Filter bookings
+            </h2>
+            <p className="mt-1 text-sm text-[color:var(--pc-muted)]">
+              Narrow the list by current status, patient or owner, and appointment date.
+            </p>
+          </div>
+          <p className="text-sm text-[color:var(--pc-muted)]">
+            Showing {filteredBookings.length} of {bookings.length} booking
+            {bookings.length === 1 ? "" : "s"}
+          </p>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr_0.8fr_auto]">
+          <label className="block text-sm font-medium text-[color:var(--pc-ink)]">
+            Patient or owner
+            <input
+              value={patientQuery}
+              onChange={(event) => setPatientQuery(event.target.value)}
+              className="mt-2 w-full rounded-[1rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-3 text-sm text-[color:var(--pc-ink)] outline-none transition focus:border-[color:var(--pc-sky)]"
+              placeholder="Search by pet name, owner, or email"
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-[color:var(--pc-ink)]">
+            Status
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as Booking["status"] | "all")
+              }
+              className="mt-2 w-full rounded-[1rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-3 text-sm text-[color:var(--pc-ink)] outline-none transition focus:border-[color:var(--pc-sky)]"
+            >
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="accepted">Accepted</option>
+              <option value="rejected">Rejected</option>
+              <option value="completed">Completed</option>
+            </select>
+          </label>
+
+          <label className="block text-sm font-medium text-[color:var(--pc-ink)]">
+            Appointment date
+            <input
+              type="date"
+              value={scheduledDateFilter}
+              onChange={(event) => setScheduledDateFilter(event.target.value)}
+              className="mt-2 w-full rounded-[1rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-3 text-sm text-[color:var(--pc-ink)] outline-none transition focus:border-[color:var(--pc-sky)]"
+            />
+          </label>
+
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={() => {
+                setPatientQuery("");
+                setStatusFilter("all");
+                setScheduledDateFilter("");
+              }}
+              className="w-full rounded-full border border-[color:var(--pc-line)] px-4 py-3 text-sm font-medium text-[color:var(--pc-ink)] transition hover:border-[color:var(--pc-sky)] hover:bg-white"
+            >
+              Clear filters
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section className="space-y-4">
-        {bookings.length > 0 ? (
-          bookings.map((booking) => {
+        {filteredBookings.length > 0 ? (
+          filteredBookings.map((booking) => {
             const relatedPrescriptions = prescriptions.filter(
               (prescription) => prescription.booking.id === booking.id,
             );
@@ -443,6 +538,8 @@ export function DoctorDashboard() {
                     ) : null}
                   </div>
                 </div>
+
+                <BookingStatusTimeline history={booking.statusHistory} />
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
                   <section>
@@ -716,6 +813,10 @@ export function DoctorDashboard() {
               </article>
             );
           })
+        ) : bookings.length > 0 ? (
+          <div className="rounded-[2rem] border border-dashed border-[color:var(--pc-line)] bg-white/90 px-6 py-10 text-sm text-[color:var(--pc-muted)]">
+            No bookings match the current filters.
+          </div>
         ) : (
           <div className="rounded-[2rem] border border-dashed border-[color:var(--pc-line)] bg-white/90 px-6 py-10 text-sm text-[color:var(--pc-muted)]">
             No bookings assigned yet.

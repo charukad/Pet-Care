@@ -13,10 +13,10 @@ This plan converts the overview into a complete execution checklist so the full 
 ## Delivery Principles
 
 - [ ] Keep the system single-platform and non-SaaS
-- [ ] Use Next.js App Router for the frontend
-- [ ] Use Node.js + Express for the backend API
+- [x] Use Next.js App Router for the frontend
+- [x] Use Node.js + Express for the backend API
 - [ ] Use MongoDB Atlas as the primary database
-- [ ] Use Socket.io for real-time messaging
+- [x] Use Socket.io for real-time messaging
 - [ ] Use Cloudinary or AWS S3 for file and image storage
 - [ ] Keep the UI mobile-first, clean, modern, and card-based
 - [x] Apply JWT authentication and role-based authorization across the system
@@ -147,11 +147,11 @@ This plan converts the overview into a complete execution checklist so the full 
 - [x] Allow doctors to change booking status to Accepted
 - [x] Allow doctors to change booking status to Rejected
 - [x] Allow doctors to change booking status to Completed
-- [ ] Show booking status history to users and doctors
+- [x] Show booking status history to users and doctors
 - [x] Prevent double booking and time slot conflicts
 - [ ] Lock or reserve slots during active booking checkout
 - [x] Allow users to view upcoming and past bookings
-- [ ] Allow doctors to filter bookings by date, status, and patient
+- [x] Allow doctors to filter bookings by date, status, and patient
 - [ ] Add smart calendar views for doctors and users
 - [ ] Add appointment reschedule and cancellation rules if approved for release
 - [ ] Add reminder scheduling tied to booking date and time
@@ -321,7 +321,7 @@ This plan converts the overview into a complete execution checklist so the full 
 
 ## Definition of Done
 
-- [ ] Public users can browse, search, and view doctors without logging in
+- [x] Public users can browse, search, and view doctors without logging in
 - [ ] Pet owners can register, log in, manage pets, book appointments, chat with doctors, and view prescriptions and medical history
 - [ ] Doctors can manage availability, respond to bookings, chat with users, provide consultations, and generate prescriptions
 - [ ] Admin can manage doctors, users, bookings, and system monitoring from one platform

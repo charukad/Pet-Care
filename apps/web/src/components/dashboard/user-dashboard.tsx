@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BookingStatusTimeline } from "@/components/booking/booking-status-timeline";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
 import type { Booking, Pet, Prescription } from "@/types/app";
@@ -293,6 +294,7 @@ export function UserDashboard() {
                     {booking.notes}
                   </p>
                 ) : null}
+                <BookingStatusTimeline history={booking.statusHistory} />
               </div>
             ))
           ) : (
