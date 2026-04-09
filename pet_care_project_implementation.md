@@ -152,8 +152,8 @@ This plan converts the overview into a complete execution checklist so the full 
 - [ ] Lock or reserve slots during active booking checkout
 - [x] Allow users to view upcoming and past bookings
 - [x] Allow doctors to filter bookings by date, status, and patient
-- [ ] Add smart calendar views for doctors and users
-- [ ] Add appointment reschedule and cancellation rules if approved for release
+- [x] Add smart calendar views for doctors and users
+- [x] Add appointment reschedule and cancellation rules if approved for release
 - [ ] Add reminder scheduling tied to booking date and time
 
 ## Phase 9 - Real-Time Messaging and Consultation Communication

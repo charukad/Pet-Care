@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BookingsCalendar } from "@/components/booking/bookings-calendar";
 import { BookingStatusTimeline } from "@/components/booking/booking-status-timeline";
 import { DoctorAvailabilityManager } from "@/components/dashboard/doctor-availability-manager";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
@@ -382,6 +383,13 @@ export function DoctorDashboard() {
           </p>
         </div>
       </section>
+
+      <BookingsCalendar
+        bookings={bookings}
+        title="Doctor calendar"
+        description="See the full appointment month at a glance, then open any day to review the owners and pets scheduled there."
+        audience="doctor"
+      />
 
       <DoctorAvailabilityManager token={session!.token} />
 

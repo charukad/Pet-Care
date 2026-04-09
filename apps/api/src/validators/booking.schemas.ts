@@ -22,3 +22,11 @@ export const updateBookingStatusSchema = z
       });
     }
   });
+
+export const rescheduleBookingSchema = z.object({
+  scheduledAt: z.string().trim().min(1, "A new booking time is required."),
+});
+
+export const cancelBookingSchema = z.object({
+  reason: z.string().trim().max(300).optional().or(z.literal("")),
+});

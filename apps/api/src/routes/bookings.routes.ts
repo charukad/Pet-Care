@@ -2,13 +2,17 @@ import { Router } from "express";
 import { requireAuth, requireRoles } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate-body";
 import {
+  cancelBooking,
   createBooking,
   listBookingsForDoctor,
   listBookingsForUser,
+  rescheduleBooking,
   updateBookingStatus,
 } from "../store";
 import {
+  cancelBookingSchema,
   createBookingSchema,
+  rescheduleBookingSchema,
   updateBookingStatusSchema,
 } from "../validators/booking.schemas";
 
@@ -50,6 +54,68 @@ bookingsRouter.get("/doctor/me", requireRoles("doctor"), async (request, respons
     data: await listBookingsForDoctor(request.user!.doctorProfileId!),
   });
 });
+
+bookingsRouter.patch(
+  "/:bookingId/reschedule",
+  requireRoles("user"),
+  validateBody(rescheduleBookingSchema),
+  async (request, response) => {
+    const rawBookingId = request.params.bookingId;
+    const bookingId = Array.isArray(rawBookingId)
+      ? rawBookingId[0]
+      : rawBookingId;
+
+    if (!bookingId) {
+      response.status(400).json({
+        success: false,
+        message: "Booking id is required.",
+      });
+      return;
+    }
+
+    const booking = await rescheduleBooking({
+      bookingId,
+      userId: request.user!.id,
+      scheduledAt: request.body.scheduledAt,
+    });
+
+    response.json({
+      success: true,
+      data: booking,
+    });
+  },
+);
+
+bookingsRouter.patch(
+  "/:bookingId/cancel",
+  requireRoles("user"),
+  validateBody(cancelBookingSchema),
+  async (request, response) => {
+    const rawBookingId = request.params.bookingId;
+    const bookingId = Array.isArray(rawBookingId)
+      ? rawBookingId[0]
+      : rawBookingId;
+
+    if (!bookingId) {
+      response.status(400).json({
+        success: false,
+        message: "Booking id is required.",
+      });
+      return;
+    }
+
+    const booking = await cancelBooking({
+      bookingId,
+      userId: request.user!.id,
+      reason: request.body.reason,
+    });
+
+    response.json({
+      success: true,
+      data: booking,
+    });
+  },
+);
 
 bookingsRouter.patch(
   "/:bookingId/status",

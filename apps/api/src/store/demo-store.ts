@@ -264,6 +264,18 @@ type UpdateBookingStatusInput = {
   rejectionReason?: string;
 };
 
+type RescheduleBookingInput = {
+  bookingId: string;
+  userId: string;
+  scheduledAt: string;
+};
+
+type CancelBookingInput = {
+  bookingId: string;
+  userId: string;
+  reason?: string;
+};
+
 type CreateChatMessageInput = {
   actor: AuthenticatedUser;
   conversationId: string;
@@ -293,6 +305,9 @@ type DoctorAvailabilityRecord = {
   blockedSlots: DoctorBlockedSlot[];
   updatedAt: string;
 };
+
+const bookingRescheduleCutoffMs = 1000 * 60 * 60 * 12;
+const bookingCancellationCutoffMs = 1000 * 60 * 60 * 2;
 
 function createTimestamp() {
   return new Date().toISOString();
@@ -556,7 +571,11 @@ function getNextAvailableSummary(doctorProfileId: string) {
     : "No upcoming slots";
 }
 
-function assertDoctorSlotAvailable(doctorProfileId: string, scheduledAt: string) {
+function assertDoctorSlotAvailable(
+  doctorProfileId: string,
+  scheduledAt: string,
+  excludedBookingId?: string,
+) {
   const availabilityRecord = getDoctorAvailabilityRecord(doctorProfileId);
 
   if (!availabilityRecord) {
@@ -569,7 +588,10 @@ function assertDoctorSlotAvailable(doctorProfileId: string, scheduledAt: string)
     availability: availabilityRecord.availability,
     availabilityOverrides: availabilityRecord.availabilityOverrides,
     blockedSlotStarts: availabilityRecord.blockedSlots.map((slot) => slot.startsAt),
-    bookedSlotStarts: getActiveBookedSlotStartsForDoctor(doctorProfileId),
+    bookedSlotStarts: getActiveBookedSlotStartsForDoctor(
+      doctorProfileId,
+      excludedBookingId,
+    ),
   }).find((slot) => slot.startsAt === scheduledAt);
 
   if (!matchingSlot) {
@@ -593,6 +615,27 @@ function assertDoctorSlotAvailable(doctorProfileId: string, scheduledAt: string)
   if (matchingSlot.status === "past") {
     throw new HttpError(400, "Bookings must be scheduled in the future.");
   }
+}
+
+function getBookingRecordForUser(bookingId: string, userId: string) {
+  const booking = bookings.find((candidate) => candidate.id === bookingId);
+
+  if (!booking) {
+    throw new HttpError(404, "Booking could not be found.");
+  }
+
+  if (booking.userId !== userId) {
+    throw new HttpError(403, "You can only manage your own bookings.");
+  }
+
+  return booking;
+}
+
+function formatScheduleNote(isoString: string) {
+  return new Intl.DateTimeFormat("en-LK", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(isoString));
 }
 
 function createConversationId(userId: string, doctorProfileId: string) {
@@ -1091,6 +1134,109 @@ export function updateBookingStatus(input: UpdateBookingStatusInput) {
           : input.status === "completed"
             ? "Consultation marked as completed."
             : "Booking accepted by doctor.",
+    }),
+  );
+
+  return expandBooking(booking);
+}
+
+export function rescheduleBooking(input: RescheduleBookingInput) {
+  const booking = getBookingRecordForUser(input.bookingId, input.userId);
+
+  if (booking.status !== "pending" && booking.status !== "accepted") {
+    throw new HttpError(
+      400,
+      "Only pending or accepted bookings can be rescheduled.",
+    );
+  }
+
+  if (new Date(booking.scheduledAt).getTime() - Date.now() < bookingRescheduleCutoffMs) {
+    throw new HttpError(
+      400,
+      "Bookings can only be rescheduled at least 12 hours before the appointment.",
+    );
+  }
+
+  const owner = findUserRecordById(input.userId);
+
+  if (!owner) {
+    throw new HttpError(404, "Booking owner could not be found.");
+  }
+
+  const nextScheduledDate = new Date(input.scheduledAt);
+
+  if (Number.isNaN(nextScheduledDate.getTime())) {
+    throw new HttpError(400, "Booking date is invalid.");
+  }
+
+  if (nextScheduledDate.getTime() < Date.now()) {
+    throw new HttpError(400, "Bookings must be scheduled in the future.");
+  }
+
+  const normalizedScheduledAt = nextScheduledDate.toISOString();
+
+  if (normalizedScheduledAt === booking.scheduledAt) {
+    throw new HttpError(400, "Choose a different slot before rescheduling.");
+  }
+
+  assertDoctorSlotAvailable(
+    booking.doctorProfileId,
+    normalizedScheduledAt,
+    booking.id,
+  );
+
+  const previousScheduledAt = booking.scheduledAt;
+  const requiresReconfirmation = booking.status === "accepted";
+  booking.scheduledAt = normalizedScheduledAt;
+  booking.status = requiresReconfirmation ? "pending" : booking.status;
+  booking.updatedAt = createTimestamp();
+  booking.statusHistory.push(
+    createBookingStatusHistoryEntry({
+      status: booking.status,
+      actorRole: owner.role,
+      actorName: owner.name,
+      changedAt: booking.updatedAt,
+      note:
+        requiresReconfirmation
+          ? `Rescheduled from ${formatScheduleNote(previousScheduledAt)} to ${formatScheduleNote(normalizedScheduledAt)}. Doctor confirmation is required again.`
+          : `Rescheduled from ${formatScheduleNote(previousScheduledAt)} to ${formatScheduleNote(normalizedScheduledAt)}.`,
+    }),
+  );
+
+  return expandBooking(booking);
+}
+
+export function cancelBooking(input: CancelBookingInput) {
+  const booking = getBookingRecordForUser(input.bookingId, input.userId);
+
+  if (booking.status !== "pending" && booking.status !== "accepted") {
+    throw new HttpError(400, "Only pending or accepted bookings can be cancelled.");
+  }
+
+  if (new Date(booking.scheduledAt).getTime() - Date.now() < bookingCancellationCutoffMs) {
+    throw new HttpError(
+      400,
+      "Bookings can only be cancelled at least 2 hours before the appointment.",
+    );
+  }
+
+  const owner = findUserRecordById(input.userId);
+
+  if (!owner) {
+    throw new HttpError(404, "Booking owner could not be found.");
+  }
+
+  booking.status = "cancelled";
+  booking.updatedAt = createTimestamp();
+  booking.statusHistory.push(
+    createBookingStatusHistoryEntry({
+      status: "cancelled",
+      actorRole: owner.role,
+      actorName: owner.name,
+      changedAt: booking.updatedAt,
+      note:
+        normalizeOptionalText(input.reason) ??
+        "Booking cancelled by the pet owner before the appointment.",
     }),
   );
 

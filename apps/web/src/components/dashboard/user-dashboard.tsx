@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BookingsCalendar } from "@/components/booking/bookings-calendar";
 import { BookingStatusTimeline } from "@/components/booking/booking-status-timeline";
+import { UserBookingActions } from "@/components/booking/user-booking-actions";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
 import type { Booking, Pet, Prescription } from "@/types/app";
@@ -116,6 +118,9 @@ export function UserDashboard() {
   }
 
   const recentPrescriptions = prescriptions.slice(0, 3);
+  const sortedBookings = [...bookings].sort((left, right) =>
+    left.scheduledAt.localeCompare(right.scheduledAt),
+  );
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-14 sm:px-6 lg:px-8">
@@ -136,6 +141,13 @@ export function UserDashboard() {
           {errorMessage}
         </div>
       ) : null}
+
+      <BookingsCalendar
+        bookings={sortedBookings}
+        title="Booking calendar"
+        description="Track upcoming visits in a month view and open each day to see the exact appointment mix."
+        audience="user"
+      />
 
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-[1.8rem] border border-[color:var(--pc-line)] bg-white/90 p-6 shadow-[0_24px_80px_rgba(8,47,73,0.08)]">
@@ -267,8 +279,8 @@ export function UserDashboard() {
           Track doctor responses and appointment timing here.
         </p>
         <div className="mt-6 space-y-4">
-          {bookings.length > 0 ? (
-            bookings.map((booking) => (
+          {sortedBookings.length > 0 ? (
+            sortedBookings.map((booking) => (
               <div
                 key={booking.id}
                 className="rounded-[1.35rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] p-4"
@@ -294,6 +306,21 @@ export function UserDashboard() {
                     {booking.notes}
                   </p>
                 ) : null}
+                <UserBookingActions
+                  booking={booking}
+                  token={session!.token}
+                  onUpdated={(nextBooking) => {
+                    setBookings((currentBookings) =>
+                      currentBookings.map((currentBooking) =>
+                        currentBooking.id === nextBooking.id
+                          ? nextBooking
+                          : currentBooking,
+                      ),
+                    );
+                    setErrorMessage(null);
+                  }}
+                  onError={setErrorMessage}
+                />
                 <BookingStatusTimeline history={booking.statusHistory} />
               </div>
             ))

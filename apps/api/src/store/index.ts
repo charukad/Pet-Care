@@ -138,8 +138,13 @@ type DbPrescription = {
 type CreatePetInput = Parameters<typeof demoStore.createPet>[0];
 type CreateBookingInput = Parameters<typeof demoStore.createBooking>[0];
 type UpdateBookingStatusInput = Parameters<typeof demoStore.updateBookingStatus>[0];
+type RescheduleBookingInput = Parameters<typeof demoStore.rescheduleBooking>[0];
+type CancelBookingInput = Parameters<typeof demoStore.cancelBooking>[0];
 type CreateChatMessageInput = Parameters<typeof demoStore.createChatMessage>[0];
 type CreatePrescriptionInput = Parameters<typeof demoStore.createPrescription>[0];
+
+const bookingRescheduleCutoffMs = 1000 * 60 * 60 * 12;
+const bookingCancellationCutoffMs = 1000 * 60 * 60 * 2;
 
 function createTimestamp() {
   return new Date().toISOString();
@@ -249,16 +254,25 @@ async function getDoctorDocumentByProfileId(doctorProfileId: string) {
   return (await Doctor.findOne({ doctorProfileId }).lean()) as DbDoctor | null;
 }
 
-async function getBookedSlotStartsForDoctor(doctorProfileId: string) {
+async function getBookedSlotStartsForDoctor(
+  doctorProfileId: string,
+  excludedBookingId?: string,
+) {
   if (!isDatabaseConnected()) {
     return demoStore
       .listBookingsForDoctor(doctorProfileId)
-      .filter((booking) => booking.status !== "rejected" && booking.status !== "cancelled")
+      .filter(
+        (booking) =>
+          booking.id !== excludedBookingId &&
+          booking.status !== "rejected" &&
+          booking.status !== "cancelled",
+      )
       .map((booking) => booking.scheduledAt);
   }
 
   const bookings = (await Booking.find({
     doctorProfileId,
+    ...(excludedBookingId ? { appId: { $ne: excludedBookingId } } : {}),
     status: { $nin: ["rejected", "cancelled"] },
   })
     .select({ scheduledAt: 1 })
@@ -291,7 +305,11 @@ async function getNextAvailableSummary(doctorProfileId: string) {
     : "No upcoming slots";
 }
 
-async function assertDoctorSlotAvailable(doctorProfileId: string, scheduledAt: string) {
+async function assertDoctorSlotAvailable(
+  doctorProfileId: string,
+  scheduledAt: string,
+  excludedBookingId?: string,
+) {
   const config = await getDoctorAvailabilityConfig(doctorProfileId);
 
   if (!config) {
@@ -303,7 +321,10 @@ async function assertDoctorSlotAvailable(doctorProfileId: string, scheduledAt: s
     availability: config.availability,
     availabilityOverrides: config.availabilityOverrides,
     blockedSlotStarts: config.blockedSlots.map((slot) => slot.startsAt),
-    bookedSlotStarts: await getBookedSlotStartsForDoctor(doctorProfileId),
+    bookedSlotStarts: await getBookedSlotStartsForDoctor(
+      doctorProfileId,
+      excludedBookingId,
+    ),
   }).find((slot) => slot.startsAt === scheduledAt);
 
   if (!matchingSlot) {
@@ -327,6 +348,13 @@ async function assertDoctorSlotAvailable(doctorProfileId: string, scheduledAt: s
   if (matchingSlot.status === "past") {
     throw new HttpError(400, "Bookings must be scheduled in the future.");
   }
+}
+
+function formatScheduleNote(isoString: string) {
+  return new Intl.DateTimeFormat("en-LK", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(isoString));
 }
 
 function mapAuthenticatedUser(user: DbUser): AuthenticatedUser {
@@ -622,6 +650,20 @@ async function getBookingForDoctor(doctorProfileId: string, bookingId: string) {
 
   if (booking.doctorProfileId !== doctorProfileId) {
     throw new HttpError(403, "You can only access prescriptions for your own bookings.");
+  }
+
+  return mapBookingRecord(booking);
+}
+
+async function getBookingForUser(userId: string, bookingId: string) {
+  const booking = (await Booking.findOne({ appId: bookingId }).lean()) as DbBooking | null;
+
+  if (!booking) {
+    throw new HttpError(404, "Booking could not be found.");
+  }
+
+  if (booking.userAppId !== userId) {
+    throw new HttpError(403, "You can only manage your own bookings.");
   }
 
   return mapBookingRecord(booking);
@@ -1097,6 +1139,207 @@ export async function updateBookingStatus(input: UpdateBookingStatusInput) {
       status: expandedBooking.status,
     },
   });
+
+  return expandedBooking;
+}
+
+export async function rescheduleBooking(input: RescheduleBookingInput) {
+  if (!isDatabaseConnected()) {
+    const booking = demoStore.rescheduleBooking(input);
+    const doctorUser = await findDoctorUserByProfileId(booking.doctor.id);
+
+    if (doctorUser) {
+      await createNotification({
+        userId: doctorUser.id,
+        title: "Booking rescheduled",
+        message: `${booking.owner.name} moved the appointment for ${booking.pet.name} to ${formatScheduleNote(booking.scheduledAt)}.`,
+        type: "booking",
+        metadata: {
+          bookingId: booking.id,
+          status: booking.status,
+        },
+      });
+    }
+
+    return booking;
+  }
+
+  const bookingRecord = await getBookingForUser(input.userId, input.bookingId);
+
+  if (bookingRecord.status !== "pending" && bookingRecord.status !== "accepted") {
+    throw new HttpError(
+      400,
+      "Only pending or accepted bookings can be rescheduled.",
+    );
+  }
+
+  if (new Date(bookingRecord.scheduledAt).getTime() - Date.now() < bookingRescheduleCutoffMs) {
+    throw new HttpError(
+      400,
+      "Bookings can only be rescheduled at least 12 hours before the appointment.",
+    );
+  }
+
+  const nextScheduledDate = new Date(input.scheduledAt);
+
+  if (Number.isNaN(nextScheduledDate.getTime())) {
+    throw new HttpError(400, "Booking date is invalid.");
+  }
+
+  if (nextScheduledDate.getTime() < Date.now()) {
+    throw new HttpError(400, "Bookings must be scheduled in the future.");
+  }
+
+  const normalizedScheduledAt = nextScheduledDate.toISOString();
+
+  if (normalizedScheduledAt === bookingRecord.scheduledAt) {
+    throw new HttpError(400, "Choose a different slot before rescheduling.");
+  }
+
+  await assertDoctorSlotAvailable(
+    bookingRecord.doctorProfileId,
+    normalizedScheduledAt,
+    bookingRecord.id,
+  );
+
+  const owner = await findUserRecordById(input.userId);
+
+  if (!owner) {
+    throw new HttpError(404, "Booking owner could not be found.");
+  }
+
+  const bookingDocument = await Booking.findOne({ appId: input.bookingId });
+
+  if (!bookingDocument) {
+    throw new HttpError(404, "Booking could not be found.");
+  }
+
+  const previousScheduledAt = toIso(bookingDocument.scheduledAt);
+  const requiresReconfirmation = bookingDocument.status === "accepted";
+
+  bookingDocument.scheduledAt = new Date(normalizedScheduledAt);
+  bookingDocument.status = requiresReconfirmation ? "pending" : bookingDocument.status;
+  bookingDocument.statusHistory.push(
+    createBookingStatusHistoryEntry({
+      status: bookingDocument.status,
+      actorRole: owner.role,
+      actorName: owner.name,
+      changedAt: createTimestamp(),
+      note: requiresReconfirmation
+        ? `Rescheduled from ${formatScheduleNote(previousScheduledAt)} to ${formatScheduleNote(normalizedScheduledAt)}. Doctor confirmation is required again.`
+        : `Rescheduled from ${formatScheduleNote(previousScheduledAt)} to ${formatScheduleNote(normalizedScheduledAt)}.`,
+    }),
+  );
+  await bookingDocument.save();
+
+  const [expandedBooking] = await expandBookings([
+    mapBookingRecord(bookingDocument.toObject() as DbBooking),
+  ]);
+
+  if (!expandedBooking) {
+    throw new HttpError(500, "Booking could not be expanded after rescheduling.");
+  }
+
+  const doctorUser = await findDoctorUserByProfileId(expandedBooking.doctor.id);
+
+  if (doctorUser) {
+    await createNotification({
+      userId: doctorUser.id,
+      title: "Booking rescheduled",
+      message: `${expandedBooking.owner.name} moved the appointment for ${expandedBooking.pet.name} to ${formatScheduleNote(expandedBooking.scheduledAt)}.`,
+      type: "booking",
+      metadata: {
+        bookingId: expandedBooking.id,
+        status: expandedBooking.status,
+      },
+    });
+  }
+
+  return expandedBooking;
+}
+
+export async function cancelBooking(input: CancelBookingInput) {
+  if (!isDatabaseConnected()) {
+    const booking = demoStore.cancelBooking(input);
+    const doctorUser = await findDoctorUserByProfileId(booking.doctor.id);
+
+    if (doctorUser) {
+      await createNotification({
+        userId: doctorUser.id,
+        title: "Booking cancelled",
+        message: `${booking.owner.name} cancelled the appointment for ${booking.pet.name}.`,
+        type: "booking",
+        metadata: {
+          bookingId: booking.id,
+          status: booking.status,
+        },
+      });
+    }
+
+    return booking;
+  }
+
+  const bookingRecord = await getBookingForUser(input.userId, input.bookingId);
+
+  if (bookingRecord.status !== "pending" && bookingRecord.status !== "accepted") {
+    throw new HttpError(400, "Only pending or accepted bookings can be cancelled.");
+  }
+
+  if (new Date(bookingRecord.scheduledAt).getTime() - Date.now() < bookingCancellationCutoffMs) {
+    throw new HttpError(
+      400,
+      "Bookings can only be cancelled at least 2 hours before the appointment.",
+    );
+  }
+
+  const owner = await findUserRecordById(input.userId);
+
+  if (!owner) {
+    throw new HttpError(404, "Booking owner could not be found.");
+  }
+
+  const bookingDocument = await Booking.findOne({ appId: input.bookingId });
+
+  if (!bookingDocument) {
+    throw new HttpError(404, "Booking could not be found.");
+  }
+
+  bookingDocument.status = "cancelled";
+  bookingDocument.statusHistory.push(
+    createBookingStatusHistoryEntry({
+      status: "cancelled",
+      actorRole: owner.role,
+      actorName: owner.name,
+      changedAt: createTimestamp(),
+      note:
+        normalizeOptionalText(input.reason) ??
+        "Booking cancelled by the pet owner before the appointment.",
+    }),
+  );
+  await bookingDocument.save();
+
+  const [expandedBooking] = await expandBookings([
+    mapBookingRecord(bookingDocument.toObject() as DbBooking),
+  ]);
+
+  if (!expandedBooking) {
+    throw new HttpError(500, "Booking could not be expanded after cancellation.");
+  }
+
+  const doctorUser = await findDoctorUserByProfileId(expandedBooking.doctor.id);
+
+  if (doctorUser) {
+    await createNotification({
+      userId: doctorUser.id,
+      title: "Booking cancelled",
+      message: `${expandedBooking.owner.name} cancelled the appointment for ${expandedBooking.pet.name}.`,
+      type: "booking",
+      metadata: {
+        bookingId: expandedBooking.id,
+        status: expandedBooking.status,
+      },
+    });
+  }
 
   return expandedBooking;
 }
