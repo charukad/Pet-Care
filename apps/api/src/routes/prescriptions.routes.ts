@@ -7,27 +7,27 @@ import {
   listPrescriptionsForBooking,
   listPrescriptionsForDoctor,
   listPrescriptionsForUser,
-} from "../store/demo-store";
+} from "../store";
 import { createPrescriptionSchema } from "../validators/prescription.schemas";
 
 const prescriptionsRouter = Router();
 
 prescriptionsRouter.use(requireAuth);
 
-prescriptionsRouter.get("/me", requireRoles("user"), (request, response) => {
+prescriptionsRouter.get("/me", requireRoles("user"), async (request, response) => {
   response.json({
     success: true,
-    data: listPrescriptionsForUser(request.user!.id),
+    data: await listPrescriptionsForUser(request.user!.id),
   });
 });
 
 prescriptionsRouter.get(
   "/doctor/me",
   requireRoles("doctor"),
-  (request, response) => {
+  async (request, response) => {
     response.json({
       success: true,
-      data: listPrescriptionsForDoctor(request.user!.doctorProfileId!),
+      data: await listPrescriptionsForDoctor(request.user!.doctorProfileId!),
     });
   },
 );
@@ -35,7 +35,7 @@ prescriptionsRouter.get(
 prescriptionsRouter.get(
   "/booking/:bookingId",
   requireRoles("doctor"),
-  (request, response) => {
+  async (request, response) => {
     const rawBookingId = request.params.bookingId;
     const bookingId = Array.isArray(rawBookingId) ? rawBookingId[0] : rawBookingId;
 
@@ -49,7 +49,10 @@ prescriptionsRouter.get(
 
     response.json({
       success: true,
-      data: listPrescriptionsForBooking(request.user!.doctorProfileId!, bookingId),
+      data: await listPrescriptionsForBooking(
+        request.user!.doctorProfileId!,
+        bookingId,
+      ),
     });
   },
 );
@@ -58,8 +61,8 @@ prescriptionsRouter.post(
   "/",
   requireRoles("doctor"),
   validateBody(createPrescriptionSchema),
-  (request, response) => {
-    const prescription = createPrescription({
+  async (request, response) => {
+    const prescription = await createPrescription({
       actor: request.user!,
       bookingId: request.body.bookingId,
       diagnosis: request.body.diagnosis,
@@ -80,10 +83,10 @@ const medicalHistoryRouter = Router();
 medicalHistoryRouter.use(requireAuth);
 medicalHistoryRouter.use(requireRoles("user"));
 
-medicalHistoryRouter.get("/me", (request, response) => {
+medicalHistoryRouter.get("/me", async (request, response) => {
   response.json({
     success: true,
-    data: getMedicalHistoryForUser(request.user!.id),
+    data: await getMedicalHistoryForUser(request.user!.id),
   });
 });
 

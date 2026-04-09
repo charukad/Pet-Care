@@ -11,11 +11,18 @@ const medicalHistoryEntrySchema = new Schema(
 
 const petSchema = new Schema(
   {
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    appId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
+    userAppId: {
+      type: String,
       required: true,
       index: true,
+      trim: true,
     },
     name: {
       type: String,
@@ -54,4 +61,5 @@ const petSchema = new Schema(
   },
 );
 
-export const Pet = models.Pet || model("Pet", petSchema);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const Pet: any = models.Pet || model("Pet", petSchema);

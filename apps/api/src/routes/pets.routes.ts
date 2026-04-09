@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRoles } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate-body";
-import { createPet, listPetsForUser } from "../store/demo-store";
+import { createPet, listPetsForUser } from "../store";
 import { createPetSchema } from "../validators/pet.schemas";
 
 const petsRouter = Router();
@@ -9,15 +9,15 @@ const petsRouter = Router();
 petsRouter.use(requireAuth);
 petsRouter.use(requireRoles("user"));
 
-petsRouter.get("/", (request, response) => {
+petsRouter.get("/", async (request, response) => {
   response.json({
     success: true,
-    data: listPetsForUser(request.user!.id),
+    data: await listPetsForUser(request.user!.id),
   });
 });
 
-petsRouter.post("/", validateBody(createPetSchema), (request, response) => {
-  const pet = createPet({
+petsRouter.post("/", validateBody(createPetSchema), async (request, response) => {
+  const pet = await createPet({
     userId: request.user!.id,
     name: request.body.name,
     type: request.body.type,

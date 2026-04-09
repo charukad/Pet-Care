@@ -1,30 +1,60 @@
 import { Schema, model, models } from "mongoose";
 
+const bookingStatusHistorySchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected", "completed", "cancelled"],
+      required: true,
+    },
+    changedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+    actorRole: {
+      type: String,
+      enum: ["user", "doctor", "admin"],
+      required: true,
+    },
+    actorName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    note: {
+      type: String,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const bookingSchema = new Schema(
   {
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    appId: {
+      type: String,
       required: true,
+      unique: true,
       index: true,
+      trim: true,
     },
-    doctorId: {
-      type: Schema.Types.ObjectId,
-      ref: "Doctor",
+    userAppId: {
+      type: String,
       index: true,
+      required: true,
+      trim: true,
     },
     doctorProfileId: {
       type: String,
       required: true,
       index: true,
+      trim: true,
     },
-    petId: {
-      type: Schema.Types.ObjectId,
-      ref: "Pet",
-    },
-    petProfileId: {
+    petAppId: {
       type: String,
       required: true,
+      trim: true,
     },
     scheduledAt: {
       type: Date,
@@ -55,6 +85,10 @@ const bookingSchema = new Schema(
       type: String,
       trim: true,
     },
+    statusHistory: {
+      type: [bookingStatusHistorySchema],
+      default: [],
+    },
     meetingUrl: {
       type: String,
       trim: true,
@@ -70,6 +104,7 @@ const bookingSchema = new Schema(
   },
 );
 
-bookingSchema.index({ doctorId: 1, scheduledAt: 1 });
+bookingSchema.index({ doctorProfileId: 1, scheduledAt: 1 });
 
-export const Booking = models.Booking || model("Booking", bookingSchema);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const Booking: any = models.Booking || model("Booking", bookingSchema);

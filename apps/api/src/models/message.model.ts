@@ -10,24 +10,31 @@ const attachmentSchema = new Schema(
 
 const messageSchema = new Schema(
   {
+    appId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
     conversationId: {
       type: String,
       required: true,
       index: true,
     },
     senderId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+      type: String,
       required: true,
+      trim: true,
     },
     receiverId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+      type: String,
       required: true,
+      trim: true,
     },
     bookingId: {
-      type: Schema.Types.ObjectId,
-      ref: "Booking",
+      type: String,
+      trim: true,
     },
     content: {
       type: String,
@@ -51,4 +58,5 @@ const messageSchema = new Schema(
   },
 );
 
-export const Message = models.Message || model("Message", messageSchema);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const Message: any = models.Message || model("Message", messageSchema);

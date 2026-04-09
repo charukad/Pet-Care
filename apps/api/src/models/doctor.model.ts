@@ -37,11 +37,18 @@ const availabilitySlotSchema = new Schema(
 
 const doctorSchema = new Schema(
   {
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    doctorProfileId: {
+      type: String,
       required: true,
       unique: true,
+      trim: true,
+      index: true,
+    },
+    userAppId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
     },
     specialization: {
       type: String,
@@ -94,4 +101,5 @@ const doctorSchema = new Schema(
 doctorSchema.index({ specialization: 1 });
 doctorSchema.index({ ratingAverage: -1 });
 
-export const Doctor = models.Doctor || model("Doctor", doctorSchema);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const Doctor: any = models.Doctor || model("Doctor", doctorSchema);

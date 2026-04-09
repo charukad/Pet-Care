@@ -3,6 +3,13 @@ import { roles } from "../constants/roles";
 
 const userSchema = new Schema(
   {
+    appId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
     name: {
       type: String,
       required: true,
@@ -47,4 +54,5 @@ const userSchema = new Schema(
   },
 );
 
-export const User = models.User || model("User", userSchema);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const User: any = models.User || model("User", userSchema);

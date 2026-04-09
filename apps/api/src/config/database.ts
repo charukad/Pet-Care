@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { seedCoreDatabase } from "./seed-database";
 
 export async function connectDatabase(mongoUri?: string) {
   if (!mongoUri) {
@@ -9,5 +10,10 @@ export async function connectDatabase(mongoUri?: string) {
   }
 
   await mongoose.connect(mongoUri);
+  await seedCoreDatabase();
   console.info("MongoDB connection established.");
+}
+
+export function isDatabaseConnected() {
+  return mongoose.connection.readyState === 1;
 }

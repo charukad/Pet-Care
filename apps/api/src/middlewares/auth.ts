@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { Role } from "../constants/roles";
-import { getUserById } from "../store/demo-store";
+import { getUserById } from "../store";
 import { HttpError } from "../utils/http-error";
 import { verifyAuthToken } from "../utils/jwt";
 
@@ -14,7 +14,7 @@ function getBearerToken(request: Request) {
   return header.replace("Bearer ", "").trim();
 }
 
-export function requireAuth(
+export async function requireAuth(
   request: Request,
   _response: Response,
   next: NextFunction,
@@ -27,7 +27,7 @@ export function requireAuth(
     }
 
     const payload = verifyAuthToken(token);
-    const user = getUserById(payload.sub);
+    const user = await getUserById(payload.sub);
 
     if (!user || !user.isActive) {
       throw new HttpError(401, "Authenticated user could not be found.");

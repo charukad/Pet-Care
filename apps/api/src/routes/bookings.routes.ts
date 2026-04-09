@@ -6,7 +6,7 @@ import {
   listBookingsForDoctor,
   listBookingsForUser,
   updateBookingStatus,
-} from "../store/demo-store";
+} from "../store";
 import {
   createBookingSchema,
   updateBookingStatusSchema,
@@ -16,10 +16,10 @@ const bookingsRouter = Router();
 
 bookingsRouter.use(requireAuth);
 
-bookingsRouter.get("/me", requireRoles("user"), (request, response) => {
+bookingsRouter.get("/me", requireRoles("user"), async (request, response) => {
   response.json({
     success: true,
-    data: listBookingsForUser(request.user!.id),
+    data: await listBookingsForUser(request.user!.id),
   });
 });
 
@@ -27,8 +27,8 @@ bookingsRouter.post(
   "/",
   requireRoles("user"),
   validateBody(createBookingSchema),
-  (request, response) => {
-    const booking = createBooking({
+  async (request, response) => {
+    const booking = await createBooking({
       userId: request.user!.id,
       doctorProfileId: request.body.doctorProfileId,
       petId: request.body.petId,
@@ -44,10 +44,10 @@ bookingsRouter.post(
   },
 );
 
-bookingsRouter.get("/doctor/me", requireRoles("doctor"), (request, response) => {
+bookingsRouter.get("/doctor/me", requireRoles("doctor"), async (request, response) => {
   response.json({
     success: true,
-    data: listBookingsForDoctor(request.user!.doctorProfileId!),
+    data: await listBookingsForDoctor(request.user!.doctorProfileId!),
   });
 });
 
@@ -55,7 +55,7 @@ bookingsRouter.patch(
   "/:bookingId/status",
   requireRoles("doctor"),
   validateBody(updateBookingStatusSchema),
-  (request, response) => {
+  async (request, response) => {
     const rawBookingId = request.params.bookingId;
     const bookingId = Array.isArray(rawBookingId)
       ? rawBookingId[0]
@@ -69,7 +69,7 @@ bookingsRouter.patch(
       return;
     }
 
-    const booking = updateBookingStatus({
+    const booking = await updateBookingStatus({
       bookingId,
       doctorProfileId: request.user!.doctorProfileId!,
       status: request.body.status,

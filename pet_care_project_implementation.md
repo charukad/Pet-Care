@@ -161,7 +161,7 @@ This plan converts the overview into a complete execution checklist so the full 
 - [x] Build the chat page
 - [x] Create conversation threads between user and doctor
 - [x] Implement real-time messaging with Socket.io
-- [ ] Persist chat history in the database
+- [x] Persist chat history in the database
 - [x] Show message timestamps and delivery state
 - [x] Restrict chat access to valid doctor-user booking relationships
 - [ ] Add unread message indicators

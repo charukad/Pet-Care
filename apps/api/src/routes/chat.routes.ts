@@ -6,7 +6,7 @@ import {
   getConversationDetails,
   listConversationsForActor,
   listMessagesForConversation,
-} from "../store/demo-store";
+} from "../store";
 import { createChatMessageSchema } from "../validators/chat.schemas";
 
 const chatRouter = Router();
@@ -14,14 +14,14 @@ const chatRouter = Router();
 chatRouter.use(requireAuth);
 chatRouter.use(requireRoles("user", "doctor"));
 
-chatRouter.get("/conversations", (request, response) => {
+chatRouter.get("/conversations", async (request, response) => {
   response.json({
     success: true,
-    data: listConversationsForActor(request.user!),
+    data: await listConversationsForActor(request.user!),
   });
 });
 
-chatRouter.get("/conversations/:conversationId", (request, response) => {
+chatRouter.get("/conversations/:conversationId", async (request, response) => {
   const rawConversationId = request.params.conversationId;
   const conversationId = Array.isArray(rawConversationId)
     ? rawConversationId[0]
@@ -38,8 +38,8 @@ chatRouter.get("/conversations/:conversationId", (request, response) => {
   response.json({
     success: true,
     data: {
-      details: getConversationDetails(conversationId),
-      messages: listMessagesForConversation(request.user!, conversationId),
+      details: await getConversationDetails(conversationId),
+      messages: await listMessagesForConversation(request.user!, conversationId),
     },
   });
 });
@@ -47,7 +47,7 @@ chatRouter.get("/conversations/:conversationId", (request, response) => {
 chatRouter.post(
   "/conversations/:conversationId/messages",
   validateBody(createChatMessageSchema),
-  (request, response) => {
+  async (request, response) => {
     const rawConversationId = request.params.conversationId;
     const conversationId = Array.isArray(rawConversationId)
       ? rawConversationId[0]
@@ -61,7 +61,7 @@ chatRouter.post(
       return;
     }
 
-    const message = createChatMessage({
+    const message = await createChatMessage({
       actor: request.user!,
       conversationId,
       content: request.body.content,

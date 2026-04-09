@@ -13,27 +13,47 @@ const medicineSchema = new Schema(
 
 const prescriptionSchema = new Schema(
   {
-    doctorId: {
-      type: Schema.Types.ObjectId,
-      ref: "Doctor",
+    appId: {
+      type: String,
       required: true,
+      unique: true,
+      trim: true,
+      index: true,
     },
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    doctorProfileId: {
+      type: String,
       required: true,
+      trim: true,
+      index: true,
     },
-    petId: {
-      type: Schema.Types.ObjectId,
-      ref: "Pet",
+    userAppId: {
+      type: String,
       required: true,
+      trim: true,
+      index: true,
     },
-    bookingId: {
-      type: Schema.Types.ObjectId,
-      ref: "Booking",
+    petAppId: {
+      type: String,
       required: true,
+      trim: true,
+      index: true,
+    },
+    bookingAppId: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    diagnosis: {
+      type: String,
+      required: true,
+      trim: true,
     },
     notes: {
+      type: String,
+      trim: true,
+    },
+    followUp: {
       type: String,
       trim: true,
     },
@@ -55,5 +75,6 @@ const prescriptionSchema = new Schema(
   },
 );
 
-export const Prescription =
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const Prescription: any =
   models.Prescription || model("Prescription", prescriptionSchema);
