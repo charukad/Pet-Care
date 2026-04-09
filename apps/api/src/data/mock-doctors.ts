@@ -20,6 +20,7 @@ export type PublicDoctor = {
   languages: string[];
   clinic: string;
   location: string;
+  focusAreas: string[];
   availability: DoctorAvailabilityDay[];
   availabilityOverrides: DoctorAvailabilityOverride[];
   blockedSlots: DoctorBlockedSlot[];
@@ -54,6 +55,7 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala"],
     clinic: "Green Paws Veterinary Centre",
     location: "Colombo",
+    focusAreas: ["Annual wellness", "Chronic disease follow-up", "Vaccination plans"],
     ...createAvailabilitySeed(),
   },
   {
@@ -70,6 +72,7 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala"],
     clinic: "Blue Haven Animal Care",
     location: "Nugegoda",
+    focusAreas: ["Allergy management", "Skin infection treatment", "Long-term skin monitoring"],
     ...createAvailabilitySeed({
       availability: [
         {
@@ -124,6 +127,7 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala"],
     clinic: "PetCare Surgical Hub",
     location: "Battaramulla",
+    focusAreas: ["Soft tissue surgery", "Recovery planning", "Second-opinion reviews"],
     ...createAvailabilitySeed({
       availability: [
         {
@@ -178,6 +182,7 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English"],
     clinic: "Happy Tails Wellness Studio",
     location: "Dehiwala",
+    focusAreas: ["Nutrition plans", "Weight management", "Senior pet routines"],
     ...createAvailabilitySeed({
       availability: [
         {
@@ -232,6 +237,7 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala", "Tamil"],
     clinic: "24/7 Paw Response Unit",
     location: "Colombo",
+    focusAreas: ["Urgent triage", "After-hours care", "Stabilization guidance"],
     ...createAvailabilitySeed({
       availability: [
         {
@@ -286,6 +292,7 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala"],
     clinic: "Little Paws and Wings",
     location: "Mount Lavinia",
+    focusAreas: ["Bird wellness", "Rabbit care", "Exotic pet follow-ups"],
     ...createAvailabilitySeed({
       availability: [
         {

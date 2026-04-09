@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { MapPin, Search, Star, Video } from "lucide-react";
-import type { DoctorProfile } from "@/data/mock-doctors";
+import type { PublicDoctorProfile } from "@/types/app";
 
 type DoctorDirectoryProps = {
-  doctors: DoctorProfile[];
+  doctors: PublicDoctorProfile[];
 };
 
 const modeOptions = ["All", "Clinic", "Video"] as const;

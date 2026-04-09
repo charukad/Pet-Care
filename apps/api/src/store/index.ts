@@ -7,6 +7,7 @@ import { Doctor } from "../models/doctor.model";
 import { Message } from "../models/message.model";
 import { Pet } from "../models/pet.model";
 import { Prescription } from "../models/prescription.model";
+import { Review } from "../models/review.model";
 import { User } from "../models/user.model";
 import type { AuthenticatedUser } from "../types/auth";
 import {
@@ -43,8 +44,11 @@ import type {
   PetRecord,
   PrescriptionMedicine,
   PrescriptionRecord,
+  PublicDoctorProfileView,
+  PublicDoctorReviewView,
   PublicDoctorView,
   PrescriptionView,
+  ReviewView,
 } from "./demo-store";
 
 type DbUser = {
@@ -139,6 +143,28 @@ type DbPrescription = {
   updatedAt: Date | string;
 };
 
+type DbReview = {
+  appId: string;
+  bookingAppId: string;
+  doctorProfileId: string;
+  userAppId: string;
+  rating: number;
+  comment?: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+};
+
+type ReviewRecord = {
+  id: string;
+  bookingId: string;
+  doctorProfileId: string;
+  userId: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type CreatePetInput = Parameters<typeof demoStore.createPet>[0];
 type CreateBookingInput = Parameters<typeof demoStore.createBooking>[0];
 type UpdateBookingStatusInput = Parameters<typeof demoStore.updateBookingStatus>[0];
@@ -146,6 +172,7 @@ type RescheduleBookingInput = Parameters<typeof demoStore.rescheduleBooking>[0];
 type CancelBookingInput = Parameters<typeof demoStore.cancelBooking>[0];
 type CreateChatMessageInput = Parameters<typeof demoStore.createChatMessage>[0];
 type CreatePrescriptionInput = Parameters<typeof demoStore.createPrescription>[0];
+type CreateReviewInput = Parameters<typeof demoStore.createReview>[0];
 
 const bookingRescheduleCutoffMs = 1000 * 60 * 60 * 12;
 const bookingCancellationCutoffMs = 1000 * 60 * 60 * 2;
@@ -222,6 +249,8 @@ function getDoctorAvailabilityConfigFromSources(
 function mapPublicDoctorView(input: {
   doctor: (typeof mockDoctors)[number];
   nextAvailable: string;
+  rating: number;
+  reviewCount: number;
 }): PublicDoctorView {
   return {
     id: input.doctor.id,
@@ -229,8 +258,8 @@ function mapPublicDoctorView(input: {
     name: input.doctor.name,
     specialization: input.doctor.specialization,
     experienceYears: input.doctor.experienceYears,
-    rating: input.doctor.rating,
-    reviewCount: input.doctor.reviewCount,
+    rating: input.rating,
+    reviewCount: input.reviewCount,
     nextAvailable: input.nextAvailable,
     consultationModes: input.doctor.consultationModes,
     bio: input.doctor.bio,
@@ -363,6 +392,13 @@ function formatScheduleNote(isoString: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(isoString));
+}
+
+function formatReviewerName(name: string) {
+  const parts = name.trim().split(/\s+/);
+  const firstName = parts[0] ?? "Pet owner";
+  const lastInitial = parts[1] ? ` ${parts[1][0]}.` : "";
+  return `${firstName}${lastInitial}`;
 }
 
 function getReminderStage(booking: Pick<BookingRecord, "scheduledAt">) {
@@ -552,6 +588,58 @@ function mapPrescriptionRecord(prescription: DbPrescription): PrescriptionRecord
   };
 }
 
+function mapReviewRecord(review: DbReview): ReviewRecord {
+  return {
+    id: review.appId,
+    bookingId: review.bookingAppId,
+    doctorProfileId: review.doctorProfileId,
+    userId: review.userAppId,
+    rating: review.rating,
+    comment: review.comment,
+    createdAt: toIso(review.createdAt),
+    updatedAt: toIso(review.updatedAt),
+  };
+}
+
+async function getDoctorRatingSnapshot(doctorProfileId: string) {
+  const doctor = getMockDoctorProfile(doctorProfileId);
+
+  if (!doctor) {
+    throw new HttpError(404, "Doctor could not be found.");
+  }
+
+  const doctorDocument = await getDoctorDocumentByProfileId(doctorProfileId);
+  const aggregate = (await Review.aggregate([
+    { $match: { doctorProfileId } },
+    {
+      $group: {
+        _id: "$doctorProfileId",
+        count: { $sum: 1 },
+        totalRating: { $sum: "$rating" },
+      },
+    },
+  ])) as Array<{
+    _id: string;
+    count: number;
+    totalRating: number;
+  }>;
+
+  const baseAverage = doctorDocument?.ratingAverage ?? doctor.rating;
+  const baseCount = doctorDocument?.reviewCount ?? doctor.reviewCount;
+  const storedCount = aggregate[0]?.count ?? 0;
+  const storedTotalRating = aggregate[0]?.totalRating ?? 0;
+  const reviewCount = baseCount + storedCount;
+  const rating =
+    reviewCount > 0
+      ? (baseAverage * baseCount + storedTotalRating) / reviewCount
+      : 0;
+
+  return {
+    rating: Number(rating.toFixed(1)),
+    reviewCount,
+  };
+}
+
 function expandBookingFromMaps(
   booking: BookingRecord,
   userMap: Map<string, AuthenticatedUser>,
@@ -693,6 +781,78 @@ async function expandPrescriptions(prescriptions: PrescriptionRecord[]) {
         email: owner.email,
       },
     } satisfies PrescriptionView;
+  });
+}
+
+async function expandReviews(reviews: ReviewRecord[]) {
+  const bookingDocuments = (await Booking.find({
+    appId: { $in: Array.from(new Set(reviews.map((review) => review.bookingId))) },
+  }).lean()) as DbBooking[];
+  const bookingMap = new Map(
+    bookingDocuments.map((booking) => [booking.appId, mapBookingRecord(booking)]),
+  );
+  const petMap = await getPetsByIds(
+    bookingDocuments.map((booking) => booking.petAppId),
+  );
+
+  return reviews.map((review) => {
+    const booking = bookingMap.get(review.bookingId);
+    const pet = booking ? petMap.get(booking.petId) : null;
+    const doctor = getMockDoctorProfile(review.doctorProfileId);
+
+    if (!booking || !pet || !doctor) {
+      throw new HttpError(500, "Review references missing related data.");
+    }
+
+    return {
+      id: review.id,
+      rating: review.rating,
+      comment: review.comment,
+      createdAt: review.createdAt,
+      updatedAt: review.updatedAt,
+      booking: {
+        id: booking.id,
+        scheduledAt: booking.scheduledAt,
+        status: booking.status,
+      },
+      doctor: {
+        id: doctor.id,
+        name: doctor.name,
+        specialization: doctor.specialization,
+      },
+      pet: {
+        id: pet.id,
+        name: pet.name,
+        type: pet.type,
+      },
+    } satisfies ReviewView;
+  });
+}
+
+async function getPublicDoctorReviews(
+  doctorProfileId: string,
+): Promise<PublicDoctorReviewView[]> {
+  const reviews = (await Review.find({ doctorProfileId })
+    .sort({ createdAt: -1 })
+    .limit(6)
+    .lean()) as DbReview[];
+  const reviewRecords = reviews.map(mapReviewRecord);
+  const userMap = await getUsersByIds(reviewRecords.map((review) => review.userId));
+
+  return reviewRecords.map((review) => {
+    const reviewer = userMap.get(review.userId);
+
+    if (!reviewer) {
+      throw new HttpError(500, "Review references a missing user.");
+    }
+
+    return {
+      id: review.id,
+      rating: review.rating,
+      comment: review.comment,
+      createdAt: review.createdAt,
+      reviewerName: formatReviewerName(reviewer.name),
+    } satisfies PublicDoctorReviewView;
   });
 }
 
@@ -848,16 +1008,22 @@ export async function listPublicDoctors() {
   }
 
   return Promise.all(
-    mockDoctors.map(async (doctor) =>
-      mapPublicDoctorView({
+    mockDoctors.map(async (doctor) => {
+      const ratingSnapshot = await getDoctorRatingSnapshot(doctor.id);
+
+      return mapPublicDoctorView({
         doctor,
         nextAvailable: await getNextAvailableSummary(doctor.id),
-      }),
-    ),
+        rating: ratingSnapshot.rating,
+        reviewCount: ratingSnapshot.reviewCount,
+      });
+    }),
   );
 }
 
-export async function getPublicDoctorBySlug(slug: string) {
+export async function getPublicDoctorBySlug(
+  slug: string,
+): Promise<PublicDoctorProfileView | null> {
   if (!isDatabaseConnected()) {
     return demoStore.getPublicDoctorBySlug(slug);
   }
@@ -868,10 +1034,73 @@ export async function getPublicDoctorBySlug(slug: string) {
     return null;
   }
 
-  return mapPublicDoctorView({
-    doctor,
-    nextAvailable: await getNextAvailableSummary(doctor.id),
+  const ratingSnapshot = await getDoctorRatingSnapshot(doctor.id);
+
+  return {
+    ...mapPublicDoctorView({
+      doctor,
+      nextAvailable: await getNextAvailableSummary(doctor.id),
+      rating: ratingSnapshot.rating,
+      reviewCount: ratingSnapshot.reviewCount,
+    }),
+    focusAreas: doctor.focusAreas,
+    reviews: await getPublicDoctorReviews(doctor.id),
+  };
+}
+
+export async function listReviewsForUser(userId: string): Promise<ReviewView[]> {
+  if (!isDatabaseConnected()) {
+    return demoStore.listReviewsForUser(userId);
+  }
+
+  const reviews = (await Review.find({ userAppId: userId })
+    .sort({ createdAt: -1 })
+    .lean()) as DbReview[];
+
+  return expandReviews(reviews.map(mapReviewRecord));
+}
+
+export async function createReview(input: CreateReviewInput): Promise<ReviewView> {
+  if (!isDatabaseConnected()) {
+    return demoStore.createReview(input);
+  }
+
+  if (input.actor.role !== "user") {
+    throw new HttpError(403, "Only pet owners can submit reviews.");
+  }
+
+  const booking = await getBookingForUser(input.actor.id, input.bookingId);
+
+  if (booking.status !== "completed") {
+    throw new HttpError(400, "Reviews can only be submitted for completed bookings.");
+  }
+
+  const existingReview = (await Review.findOne({
+    bookingAppId: input.bookingId,
+  }).lean()) as DbReview | null;
+
+  if (existingReview) {
+    throw new HttpError(409, "A review has already been submitted for this booking.");
+  }
+
+  const review = await Review.create({
+    appId: randomUUID(),
+    bookingAppId: booking.id,
+    doctorProfileId: booking.doctorProfileId,
+    userAppId: input.actor.id,
+    rating: input.rating,
+    comment: normalizeOptionalText(input.comment),
   });
+
+  const [expandedReview] = await expandReviews([
+    mapReviewRecord(review.toObject() as DbReview),
+  ]);
+
+  if (!expandedReview) {
+    throw new HttpError(500, "Review could not be expanded after creation.");
+  }
+
+  return expandedReview;
 }
 
 export async function getDoctorAvailabilityForDate(

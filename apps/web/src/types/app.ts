@@ -86,6 +86,19 @@ export type PublicDoctorProfile = {
   location: string;
 };
 
+export type PublicDoctorReview = {
+  id: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  reviewerName: string;
+};
+
+export type PublicDoctorProfileDetail = PublicDoctorProfile & {
+  focusAreas: string[];
+  reviews: PublicDoctorReview[];
+};
+
 export type DoctorAvailabilityDateView = {
   date: string;
   doctor: {
@@ -318,4 +331,27 @@ export type MedicalHistoryPet = {
   };
   bookings: Booking[];
   prescriptions: Prescription[];
+};
+
+export type Review = {
+  id: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  updatedAt: string;
+  booking: {
+    id: string;
+    scheduledAt: string;
+    status: BookingStatus;
+  };
+  doctor: {
+    id: string;
+    name: string;
+    specialization: string;
+  };
+  pet: {
+    id: string;
+    name: string;
+    type: string;
+  };
 };

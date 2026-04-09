@@ -5,9 +5,10 @@ import { useEffect, useState } from "react";
 import { BookingsCalendar } from "@/components/booking/bookings-calendar";
 import { BookingStatusTimeline } from "@/components/booking/booking-status-timeline";
 import { UserBookingActions } from "@/components/booking/user-booking-actions";
+import { BookingReviewCard } from "@/components/reviews/booking-review-card";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
-import type { Booking, Pet, Prescription } from "@/types/app";
+import type { Booking, Pet, Prescription, Review } from "@/types/app";
 
 function formatDateTime(isoString: string) {
   return new Intl.DateTimeFormat("en-LK", {
@@ -21,6 +22,7 @@ export function UserDashboard() {
   const [pets, setPets] = useState<Pet[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasLoadedDashboard, setHasLoadedDashboard] = useState(false);
   const shouldLoadDashboard = Boolean(session?.token && user?.role === "user");
@@ -42,8 +44,12 @@ export function UserDashboard() {
       api.get<ApiResponse<Prescription[]>>("/prescriptions/me", {
         headers: createAuthHeaders(session.token),
       }),
+      api.get<ApiResponse<Review[]>>("/reviews/me", {
+        headers: createAuthHeaders(session.token),
+      }),
     ])
-      .then(([petsResponse, bookingsResponse, prescriptionsResponse]) => {
+      .then(
+        ([petsResponse, bookingsResponse, prescriptionsResponse, reviewsResponse]) => {
         if (!isMounted) {
           return;
         }
@@ -51,7 +57,9 @@ export function UserDashboard() {
         setPets(petsResponse.data.data);
         setBookings(bookingsResponse.data.data);
         setPrescriptions(prescriptionsResponse.data.data);
-      })
+        setReviews(reviewsResponse.data.data);
+        },
+      )
       .catch((error) => {
         if (!isMounted) {
           return;
@@ -120,6 +128,9 @@ export function UserDashboard() {
   const recentPrescriptions = prescriptions.slice(0, 3);
   const sortedBookings = [...bookings].sort((left, right) =>
     left.scheduledAt.localeCompare(right.scheduledAt),
+  );
+  const reviewByBookingId = new Map(
+    reviews.map((review) => [review.booking.id, review]),
   );
 
   return (
@@ -331,6 +342,18 @@ export function UserDashboard() {
                   }}
                   onError={setErrorMessage}
                 />
+                {booking.status === "completed" ? (
+                  <BookingReviewCard
+                    booking={booking}
+                    token={session!.token}
+                    review={reviewByBookingId.get(booking.id)}
+                    onCreated={(review) => {
+                      setReviews((currentReviews) => [review, ...currentReviews]);
+                      setErrorMessage(null);
+                    }}
+                    onError={(message) => setErrorMessage(message || null)}
+                  />
+                ) : null}
                 <BookingStatusTimeline history={booking.statusHistory} />
               </div>
             ))

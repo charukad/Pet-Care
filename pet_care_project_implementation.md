@@ -190,9 +190,9 @@ This plan converts the overview into a complete execution checklist so the full 
 
 ## Phase 12 - Ratings, Reviews, Notifications, and Engagement
 
-- [ ] Allow users to rate doctors after completed bookings
-- [ ] Allow users to submit written reviews
-- [ ] Show doctor ratings on profile and listing pages
+- [x] Allow users to rate doctors after completed bookings
+- [x] Allow users to submit written reviews
+- [x] Show doctor ratings on profile and listing pages
 - [ ] Add moderation or admin review controls for abusive feedback
 - [ ] Integrate email notifications for registration, booking updates, reminders, and prescription availability
 - [x] Send appointment reminder notifications before consultation time
@@ -313,7 +313,7 @@ This plan converts the overview into a complete execution checklist so the full 
 - [x] Messaging and Socket.io module
 - [x] Prescription module
 - [ ] Upload and storage module
-- [ ] Review and rating module
+- [x] Review and rating module
 - [ ] Notification and email module
 - [ ] Payment module
 - [ ] AI services module

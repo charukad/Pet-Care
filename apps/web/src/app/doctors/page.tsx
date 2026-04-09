@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { DoctorDirectory } from "@/components/doctors/doctor-directory";
-import { mockDoctors } from "@/data/mock-doctors";
+import { DoctorDirectoryWorkspace } from "@/components/doctors/doctor-directory-workspace";
 
 export const metadata: Metadata = {
   title: "Find a Vet | Pet Care",
@@ -22,7 +21,7 @@ export default function DoctorsPage() {
         </p>
       </section>
 
-      <DoctorDirectory doctors={mockDoctors} />
+      <DoctorDirectoryWorkspace />
     </main>
   );
 }

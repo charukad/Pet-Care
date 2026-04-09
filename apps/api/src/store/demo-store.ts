@@ -217,6 +217,19 @@ export type PublicDoctorView = {
   location: string;
 };
 
+export type PublicDoctorReviewView = {
+  id: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  reviewerName: string;
+};
+
+export type PublicDoctorProfileView = PublicDoctorView & {
+  focusAreas: string[];
+  reviews: PublicDoctorReviewView[];
+};
+
 export type DoctorAvailabilityManagerView = {
   doctor: {
     id: string;
@@ -269,6 +282,29 @@ export type ConsultationAccessView = {
     petName: string;
     ownerName: string;
     doctorName: string;
+  };
+};
+
+export type ReviewView = {
+  id: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  updatedAt: string;
+  booking: {
+    id: string;
+    scheduledAt: string;
+    status: BookingStatus;
+  };
+  doctor: {
+    id: string;
+    name: string;
+    specialization: string;
+  };
+  pet: {
+    id: string;
+    name: string;
+    type: string;
   };
 };
 
@@ -337,6 +373,24 @@ type DoctorAvailabilityRecord = {
   availabilityOverrides: DoctorAvailabilityOverride[];
   blockedSlots: DoctorBlockedSlot[];
   updatedAt: string;
+};
+
+type ReviewRecord = {
+  id: string;
+  bookingId: string;
+  doctorProfileId: string;
+  userId: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CreateReviewInput = {
+  actor: AuthenticatedUser;
+  bookingId: string;
+  rating: number;
+  comment?: string;
 };
 
 const bookingRescheduleCutoffMs = 1000 * 60 * 60 * 12;
@@ -498,6 +552,7 @@ const chatMessages: ChatMessageRecord[] = [
 ];
 
 const prescriptions: PrescriptionRecord[] = [];
+const reviews: ReviewRecord[] = [];
 
 const doctorAvailabilityRecords: DoctorAvailabilityRecord[] = mockDoctors.map(
   (doctor) => ({
@@ -675,6 +730,41 @@ function formatScheduleNote(isoString: string) {
   }).format(new Date(isoString));
 }
 
+function formatReviewerName(name: string) {
+  const parts = name.trim().split(/\s+/);
+  const firstName = parts[0] ?? "Pet owner";
+  const lastInitial = parts[1] ? ` ${parts[1][0]}.` : "";
+  return `${firstName}${lastInitial}`;
+}
+
+function getDoctorStoredReviews(doctorProfileId: string) {
+  return reviews
+    .filter((review) => review.doctorProfileId === doctorProfileId)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+function getDoctorRatingSnapshot(doctorProfileId: string) {
+  const doctor = findDoctorProfile(doctorProfileId);
+
+  if (!doctor) {
+    throw new HttpError(404, "Doctor could not be found.");
+  }
+
+  const storedReviews = getDoctorStoredReviews(doctorProfileId);
+  const baseTotal = doctor.rating * doctor.reviewCount;
+  const reviewTotal = storedReviews.reduce(
+    (total, review) => total + review.rating,
+    0,
+  );
+  const reviewCount = doctor.reviewCount + storedReviews.length;
+  const rating = reviewCount > 0 ? (baseTotal + reviewTotal) / reviewCount : 0;
+
+  return {
+    rating: Number(rating.toFixed(1)),
+    reviewCount,
+  };
+}
+
 function getReminderStage(booking: BookingRecord) {
   const msUntilAppointment = new Date(booking.scheduledAt).getTime() - Date.now();
 
@@ -811,20 +901,71 @@ function isActiveRelationshipBooking(booking: BookingRecord) {
 }
 
 function mapPublicDoctor(doctor: (typeof mockDoctors)[number]): PublicDoctorView {
+  const ratingSnapshot = getDoctorRatingSnapshot(doctor.id);
+
   return {
     id: doctor.id,
     slug: doctor.slug,
     name: doctor.name,
     specialization: doctor.specialization,
     experienceYears: doctor.experienceYears,
-    rating: doctor.rating,
-    reviewCount: doctor.reviewCount,
+    rating: ratingSnapshot.rating,
+    reviewCount: ratingSnapshot.reviewCount,
     nextAvailable: getNextAvailableSummary(doctor.id),
     consultationModes: doctor.consultationModes,
     bio: doctor.bio,
     languages: doctor.languages,
     clinic: doctor.clinic,
     location: doctor.location,
+  };
+}
+
+function mapPublicDoctorReview(review: ReviewRecord): PublicDoctorReviewView {
+  const reviewer = findUserRecordById(review.userId);
+
+  if (!reviewer) {
+    throw new HttpError(500, "Review references a missing user.");
+  }
+
+  return {
+    id: review.id,
+    rating: review.rating,
+    comment: review.comment,
+    createdAt: review.createdAt,
+    reviewerName: formatReviewerName(reviewer.name),
+  };
+}
+
+function mapReview(review: ReviewRecord): ReviewView {
+  const booking = bookings.find((candidate) => candidate.id === review.bookingId);
+  const doctor = findDoctorProfile(review.doctorProfileId);
+  const pet = booking ? findPetRecord(booking.petId) : null;
+
+  if (!booking || !doctor || !pet) {
+    throw new HttpError(500, "Review references missing related data.");
+  }
+
+  return {
+    id: review.id,
+    rating: review.rating,
+    comment: review.comment,
+    createdAt: review.createdAt,
+    updatedAt: review.updatedAt,
+    booking: {
+      id: booking.id,
+      scheduledAt: booking.scheduledAt,
+      status: booking.status,
+    },
+    doctor: {
+      id: doctor.id,
+      name: doctor.name,
+      specialization: doctor.specialization,
+    },
+    pet: {
+      id: pet.id,
+      name: pet.name,
+      type: pet.type,
+    },
   };
 }
 
@@ -1034,9 +1175,20 @@ export function listPublicDoctors() {
   return mockDoctors.map(mapPublicDoctor);
 }
 
-export function getPublicDoctorBySlug(slug: string) {
+export function getPublicDoctorBySlug(slug: string): PublicDoctorProfileView | null {
   const doctor = mockDoctors.find((candidate) => candidate.slug === slug);
-  return doctor ? mapPublicDoctor(doctor) : null;
+
+  if (!doctor) {
+    return null;
+  }
+
+  return {
+    ...mapPublicDoctor(doctor),
+    focusAreas: doctor.focusAreas,
+    reviews: getDoctorStoredReviews(doctor.id)
+      .slice(0, 6)
+      .map(mapPublicDoctorReview),
+  };
 }
 
 export function getDoctorAvailabilityForDate(
@@ -1320,6 +1472,49 @@ export function getConsultationAccess(
     booking,
     actor.role === "doctor" ? "doctor" : "user",
   );
+}
+
+export function listReviewsForUser(userId: string) {
+  return reviews
+    .filter((review) => review.userId === userId)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .map(mapReview);
+}
+
+export function createReview(input: CreateReviewInput) {
+  if (input.actor.role !== "user") {
+    throw new HttpError(403, "Only pet owners can submit reviews.");
+  }
+
+  const booking = getBookingRecordForUser(input.bookingId, input.actor.id);
+
+  if (booking.status !== "completed") {
+    throw new HttpError(400, "Reviews can only be submitted for completed bookings.");
+  }
+
+  const existingReview = reviews.find(
+    (candidate) => candidate.bookingId === input.bookingId,
+  );
+
+  if (existingReview) {
+    throw new HttpError(409, "A review has already been submitted for this booking.");
+  }
+
+  const timestamp = createTimestamp();
+  const review: ReviewRecord = {
+    id: randomUUID(),
+    bookingId: booking.id,
+    doctorProfileId: booking.doctorProfileId,
+    userId: input.actor.id,
+    rating: input.rating,
+    comment: normalizeOptionalText(input.comment),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  reviews.push(review);
+
+  return mapReview(review);
 }
 
 export function updateBookingStatus(input: UpdateBookingStatusInput) {

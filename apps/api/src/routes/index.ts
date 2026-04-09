@@ -10,6 +10,7 @@ import { notificationsRouter } from "./notifications.routes";
 import { petsRouter } from "./pets.routes";
 import { medicalHistoryRouter, prescriptionsRouter } from "./prescriptions.routes";
 import { publicRouter } from "./public.routes";
+import { reviewsRouter } from "./reviews.routes";
 
 const apiRouter = Router();
 
@@ -24,6 +25,7 @@ apiRouter.use("/consultations", consultationsRouter);
 apiRouter.use("/notifications", notificationsRouter);
 apiRouter.use("/prescriptions", prescriptionsRouter);
 apiRouter.use("/medical-history", medicalHistoryRouter);
+apiRouter.use("/reviews", reviewsRouter);
 apiRouter.use("/admin", adminRouter);
 
 export { apiRouter };

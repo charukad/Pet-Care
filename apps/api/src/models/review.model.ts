@@ -2,21 +2,30 @@ import { Schema, model, models } from "mongoose";
 
 const reviewSchema = new Schema(
   {
-    bookingId: {
-      type: Schema.Types.ObjectId,
-      ref: "Booking",
+    appId: {
+      type: String,
       required: true,
-    },
-    doctorId: {
-      type: Schema.Types.ObjectId,
-      ref: "Doctor",
-      required: true,
+      unique: true,
+      trim: true,
       index: true,
     },
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    bookingAppId: {
+      type: String,
       required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
+    doctorProfileId: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    userAppId: {
+      type: String,
+      required: true,
+      trim: true,
     },
     rating: {
       type: Number,
@@ -34,4 +43,5 @@ const reviewSchema = new Schema(
   },
 );
 
-export const Review = models.Review || model("Review", reviewSchema);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const Review: any = models.Review || model("Review", reviewSchema);
