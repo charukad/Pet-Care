@@ -3,6 +3,10 @@ import type { Role } from "../constants/roles";
 import { mockDoctors } from "../data/mock-doctors";
 import type { AuthenticatedUser } from "../types/auth";
 import {
+  createNotification,
+  hasReminderNotification,
+} from "./notifications-store";
+import {
   findNextAvailableSlot,
   formatRelativeAvailability,
   getAvailabilitySlotsForDate,
@@ -239,6 +243,35 @@ export type DoctorAvailabilityDateView = {
   slots: DoctorAvailabilitySlot[];
 };
 
+export type ConsultationAccessState =
+  | "not_video"
+  | "inactive"
+  | "awaiting_confirmation"
+  | "scheduled"
+  | "ready"
+  | "expired";
+
+export type ConsultationAccessView = {
+  actorRole: "user" | "doctor";
+  state: ConsultationAccessState;
+  canJoin: boolean;
+  provider: string;
+  roomCode: string | null;
+  roomUrl: string | null;
+  opensAt: string | null;
+  expiresAt: string | null;
+  message: string;
+  booking: {
+    id: string;
+    scheduledAt: string;
+    status: BookingStatus;
+    consultationMode: "Clinic" | "Video";
+    petName: string;
+    ownerName: string;
+    doctorName: string;
+  };
+};
+
 type CreatePetInput = {
   userId: string;
   name: string;
@@ -308,6 +341,10 @@ type DoctorAvailabilityRecord = {
 
 const bookingRescheduleCutoffMs = 1000 * 60 * 60 * 12;
 const bookingCancellationCutoffMs = 1000 * 60 * 60 * 2;
+const reminderDayWindowMs = 1000 * 60 * 60 * 24;
+const reminderHourWindowMs = 1000 * 60 * 60;
+const consultationJoinLeadMs = 1000 * 60 * 15;
+const consultationExpiryMs = 1000 * 60 * 90;
 
 function createTimestamp() {
   return new Date().toISOString();
@@ -636,6 +673,120 @@ function formatScheduleNote(isoString: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(isoString));
+}
+
+function getReminderStage(booking: BookingRecord) {
+  const msUntilAppointment = new Date(booking.scheduledAt).getTime() - Date.now();
+
+  if (msUntilAppointment <= 0) {
+    return null;
+  }
+
+  if (msUntilAppointment <= reminderHourWindowMs) {
+    return "1h" as const;
+  }
+
+  if (msUntilAppointment <= reminderDayWindowMs) {
+    return "24h" as const;
+  }
+
+  return null;
+}
+
+function createConsultationRoomCode(bookingId: string) {
+  return bookingId.replace(/-/g, "").slice(0, 10).toUpperCase();
+}
+
+function getConsultationState(booking: BookingRecord): ConsultationAccessState {
+  if (booking.consultationMode !== "Video") {
+    return "not_video";
+  }
+
+  if (booking.status === "rejected" || booking.status === "cancelled") {
+    return "inactive";
+  }
+
+  if (booking.status === "pending") {
+    return "awaiting_confirmation";
+  }
+
+  if (booking.status === "completed") {
+    return "expired";
+  }
+
+  const scheduledAtMs = new Date(booking.scheduledAt).getTime();
+  const opensAtMs = scheduledAtMs - consultationJoinLeadMs;
+  const expiresAtMs = scheduledAtMs + consultationExpiryMs;
+  const now = Date.now();
+
+  if (now < opensAtMs) {
+    return "scheduled";
+  }
+
+  if (now > expiresAtMs) {
+    return "expired";
+  }
+
+  return "ready";
+}
+
+function buildConsultationAccessView(
+  booking: BookingRecord,
+  actorRole: "user" | "doctor",
+) {
+  const owner = findUserRecordById(booking.userId);
+  const doctor = findDoctorProfile(booking.doctorProfileId);
+  const pet = findPetRecord(booking.petId);
+
+  if (!owner || !doctor || !pet) {
+    throw new HttpError(500, "Consultation references missing related data.");
+  }
+
+  const state = getConsultationState(booking);
+  const scheduledAtMs = new Date(booking.scheduledAt).getTime();
+  const opensAt = new Date(scheduledAtMs - consultationJoinLeadMs).toISOString();
+  const expiresAt = new Date(scheduledAtMs + consultationExpiryMs).toISOString();
+  const roomCode = createConsultationRoomCode(booking.id);
+  const roomUrl =
+    state === "not_video" || state === "inactive" || state === "awaiting_confirmation"
+      ? null
+      : `/consultations/${booking.id}/room`;
+
+  const message =
+    state === "not_video"
+      ? "This appointment is a clinic visit, so no remote consultation room is available."
+      : state === "inactive"
+        ? "This remote consultation is no longer active because the booking was cancelled or rejected."
+        : state === "awaiting_confirmation"
+          ? "This video consultation will unlock after the doctor confirms the booking."
+          : state === "scheduled"
+            ? `The consultation room opens at ${formatScheduleNote(opensAt)}.`
+            : state === "expired"
+              ? booking.status === "completed"
+                ? "This consultation has already been completed."
+                : "The consultation join window has expired."
+              : "The consultation room is ready to join.";
+
+  return {
+    actorRole,
+    state,
+    canJoin: state === "ready",
+    provider: "Pet Care Live",
+    roomCode: booking.consultationMode === "Video" ? roomCode : null,
+    roomUrl,
+    opensAt: booking.consultationMode === "Video" ? opensAt : null,
+    expiresAt: booking.consultationMode === "Video" ? expiresAt : null,
+    message,
+    booking: {
+      id: booking.id,
+      scheduledAt: booking.scheduledAt,
+      status: booking.status,
+      consultationMode: booking.consultationMode,
+      petName: pet.name,
+      ownerName: owner.name,
+      doctorName: doctor.name,
+    },
+  } satisfies ConsultationAccessView;
 }
 
 function createConversationId(userId: string, doctorProfileId: string) {
@@ -1085,6 +1236,90 @@ export function listBookingsForDoctor(doctorProfileId: string) {
 
 export function listAllBookings() {
   return sortBookingsBySchedule(bookings).map(expandBooking);
+}
+
+export async function syncAppointmentReminders(actor: AuthenticatedUser) {
+  const actorBookings = bookings.filter((booking) => {
+    if (booking.status !== "accepted") {
+      return false;
+    }
+
+    if (actor.role === "user") {
+      return booking.userId === actor.id;
+    }
+
+    if (actor.role === "doctor") {
+      return booking.doctorProfileId === actor.doctorProfileId;
+    }
+
+    return false;
+  });
+
+  for (const booking of actorBookings) {
+    const reminderStage = getReminderStage(booking);
+
+    if (!reminderStage) {
+      continue;
+    }
+
+    const alreadyExists = await hasReminderNotification({
+      userId: actor.id,
+      bookingId: booking.id,
+      reminderStage,
+    });
+
+    if (alreadyExists) {
+      continue;
+    }
+
+    const expandedBooking = expandBooking(booking);
+    await createNotification({
+      userId: actor.id,
+      title:
+        reminderStage === "1h"
+          ? "Consultation starts within 1 hour"
+          : "Consultation starts within 24 hours",
+      message:
+        actor.role === "doctor"
+          ? `${expandedBooking.owner.name} and ${expandedBooking.pet.name} are scheduled for ${formatScheduleNote(expandedBooking.scheduledAt)}.`
+          : `${expandedBooking.doctor.name} is scheduled to see ${expandedBooking.pet.name} on ${formatScheduleNote(expandedBooking.scheduledAt)}.`,
+      type: "reminder",
+      metadata: {
+        bookingId: expandedBooking.id,
+        status: expandedBooking.status,
+        reminderStage,
+        consultationMode: expandedBooking.consultationMode,
+      },
+    });
+  }
+}
+
+export function getConsultationAccess(
+  actor: AuthenticatedUser,
+  bookingId: string,
+): ConsultationAccessView {
+  const booking = bookings.find((candidate) => candidate.id === bookingId);
+
+  if (!booking) {
+    throw new HttpError(404, "Booking could not be found.");
+  }
+
+  if (actor.role === "user" && booking.userId !== actor.id) {
+    throw new HttpError(403, "You cannot access this consultation.");
+  }
+
+  if (actor.role === "doctor" && booking.doctorProfileId !== actor.doctorProfileId) {
+    throw new HttpError(403, "You cannot access this consultation.");
+  }
+
+  if (actor.role === "admin") {
+    throw new HttpError(403, "Admin users cannot join private consultations.");
+  }
+
+  return buildConsultationAccessView(
+    booking,
+    actor.role === "doctor" ? "doctor" : "user",
+  );
 }
 
 export function updateBookingStatus(input: UpdateBookingStatusInput) {

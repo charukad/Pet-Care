@@ -24,7 +24,10 @@ import {
 import { HttpError } from "../utils/http-error";
 import { hashPassword, verifyPassword } from "../utils/password";
 import * as demoStore from "./demo-store";
-import { createNotification } from "./notifications-store";
+import {
+  createNotification,
+  hasReminderNotification,
+} from "./notifications-store";
 import type {
   BookingRecord,
   BookingStatus,
@@ -32,6 +35,7 @@ import type {
   BookingView,
   ChatMessageRecord,
   ChatMessageView,
+  ConsultationAccessView,
   ConversationView,
   DoctorAvailabilityDateView,
   DoctorAvailabilityManagerView,
@@ -145,6 +149,10 @@ type CreatePrescriptionInput = Parameters<typeof demoStore.createPrescription>[0
 
 const bookingRescheduleCutoffMs = 1000 * 60 * 60 * 12;
 const bookingCancellationCutoffMs = 1000 * 60 * 60 * 2;
+const reminderDayWindowMs = 1000 * 60 * 60 * 24;
+const reminderHourWindowMs = 1000 * 60 * 60;
+const consultationJoinLeadMs = 1000 * 60 * 15;
+const consultationExpiryMs = 1000 * 60 * 90;
 
 function createTimestamp() {
   return new Date().toISOString();
@@ -355,6 +363,114 @@ function formatScheduleNote(isoString: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(isoString));
+}
+
+function getReminderStage(booking: Pick<BookingRecord, "scheduledAt">) {
+  const msUntilAppointment = new Date(booking.scheduledAt).getTime() - Date.now();
+
+  if (msUntilAppointment <= 0) {
+    return null;
+  }
+
+  if (msUntilAppointment <= reminderHourWindowMs) {
+    return "1h" as const;
+  }
+
+  if (msUntilAppointment <= reminderDayWindowMs) {
+    return "24h" as const;
+  }
+
+  return null;
+}
+
+function createConsultationRoomCode(bookingId: string) {
+  return bookingId.replace(/-/g, "").slice(0, 10).toUpperCase();
+}
+
+function getConsultationState(
+  booking: Pick<BookingRecord, "consultationMode" | "status" | "scheduledAt">,
+) {
+  if (booking.consultationMode !== "Video") {
+    return "not_video" as const;
+  }
+
+  if (booking.status === "rejected" || booking.status === "cancelled") {
+    return "inactive" as const;
+  }
+
+  if (booking.status === "pending") {
+    return "awaiting_confirmation" as const;
+  }
+
+  if (booking.status === "completed") {
+    return "expired" as const;
+  }
+
+  const scheduledAtMs = new Date(booking.scheduledAt).getTime();
+  const opensAtMs = scheduledAtMs - consultationJoinLeadMs;
+  const expiresAtMs = scheduledAtMs + consultationExpiryMs;
+  const now = Date.now();
+
+  if (now < opensAtMs) {
+    return "scheduled" as const;
+  }
+
+  if (now > expiresAtMs) {
+    return "expired" as const;
+  }
+
+  return "ready" as const;
+}
+
+function buildConsultationAccessView(input: {
+  booking: BookingView;
+  actorRole: "user" | "doctor";
+}): ConsultationAccessView {
+  const state = getConsultationState(input.booking);
+  const scheduledAtMs = new Date(input.booking.scheduledAt).getTime();
+  const opensAt = new Date(scheduledAtMs - consultationJoinLeadMs).toISOString();
+  const expiresAt = new Date(scheduledAtMs + consultationExpiryMs).toISOString();
+  const roomCode = createConsultationRoomCode(input.booking.id);
+  const roomUrl =
+    state === "not_video" || state === "inactive" || state === "awaiting_confirmation"
+      ? null
+      : `/consultations/${input.booking.id}/room`;
+
+  const message =
+    state === "not_video"
+      ? "This appointment is a clinic visit, so no remote consultation room is available."
+      : state === "inactive"
+        ? "This remote consultation is no longer active because the booking was cancelled or rejected."
+        : state === "awaiting_confirmation"
+          ? "This video consultation will unlock after the doctor confirms the booking."
+          : state === "scheduled"
+            ? `The consultation room opens at ${formatScheduleNote(opensAt)}.`
+            : state === "expired"
+              ? input.booking.status === "completed"
+                ? "This consultation has already been completed."
+                : "The consultation join window has expired."
+              : "The consultation room is ready to join.";
+
+  return {
+    actorRole: input.actorRole,
+    state,
+    canJoin: state === "ready",
+    provider: "Pet Care Live",
+    roomCode: input.booking.consultationMode === "Video" ? roomCode : null,
+    roomUrl,
+    opensAt: input.booking.consultationMode === "Video" ? opensAt : null,
+    expiresAt: input.booking.consultationMode === "Video" ? expiresAt : null,
+    message,
+    booking: {
+      id: input.booking.id,
+      scheduledAt: input.booking.scheduledAt,
+      status: input.booking.status,
+      consultationMode: input.booking.consultationMode,
+      petName: input.booking.pet.name,
+      ownerName: input.booking.owner.name,
+      doctorName: input.booking.doctor.name,
+    },
+  };
 }
 
 function mapAuthenticatedUser(user: DbUser): AuthenticatedUser {
@@ -921,6 +1037,7 @@ export async function createBooking(input: CreateBookingInput) {
         metadata: {
           bookingId: booking.id,
           status: booking.status,
+          consultationMode: booking.consultationMode,
         },
       });
     }
@@ -1005,6 +1122,7 @@ export async function createBooking(input: CreateBookingInput) {
       metadata: {
         bookingId: expandedBooking.id,
         status: expandedBooking.status,
+        consultationMode: expandedBooking.consultationMode,
       },
     });
   }
@@ -1043,6 +1161,92 @@ export async function listAllBookings() {
   return expandBookings(bookings.map(mapBookingRecord));
 }
 
+export async function syncAppointmentReminders(actor: AuthenticatedUser) {
+  if (actor.role === "admin") {
+    return;
+  }
+
+  if (!isDatabaseConnected()) {
+    await demoStore.syncAppointmentReminders(actor);
+    return;
+  }
+
+  const bookings =
+    actor.role === "doctor"
+      ? await listBookingsForDoctor(actor.doctorProfileId!)
+      : await listBookingsForUser(actor.id);
+
+  for (const booking of bookings) {
+    if (booking.status !== "accepted") {
+      continue;
+    }
+
+    const reminderStage = getReminderStage(booking);
+
+    if (!reminderStage) {
+      continue;
+    }
+
+    const alreadyExists = await hasReminderNotification({
+      userId: actor.id,
+      bookingId: booking.id,
+      reminderStage,
+    });
+
+    if (alreadyExists) {
+      continue;
+    }
+
+    await createNotification({
+      userId: actor.id,
+      title:
+        reminderStage === "1h"
+          ? "Consultation starts within 1 hour"
+          : "Consultation starts within 24 hours",
+      message:
+        actor.role === "doctor"
+          ? `${booking.owner.name} and ${booking.pet.name} are scheduled for ${formatScheduleNote(booking.scheduledAt)}.`
+          : `${booking.doctor.name} is scheduled to see ${booking.pet.name} on ${formatScheduleNote(booking.scheduledAt)}.`,
+      type: "reminder",
+      metadata: {
+        bookingId: booking.id,
+        status: booking.status,
+        reminderStage,
+        consultationMode: booking.consultationMode,
+      },
+    });
+  }
+}
+
+export async function getConsultationAccess(
+  actor: AuthenticatedUser,
+  bookingId: string,
+): Promise<ConsultationAccessView> {
+  if (!isDatabaseConnected()) {
+    return demoStore.getConsultationAccess(actor, bookingId);
+  }
+
+  if (actor.role === "admin") {
+    throw new HttpError(403, "Admin users cannot join private consultations.");
+  }
+
+  const booking =
+    actor.role === "doctor"
+      ? await getBookingForDoctor(actor.doctorProfileId!, bookingId)
+      : await getBookingForUser(actor.id, bookingId);
+
+  const [expandedBooking] = await expandBookings([booking]);
+
+  if (!expandedBooking) {
+    throw new HttpError(404, "Booking could not be expanded.");
+  }
+
+  return buildConsultationAccessView({
+    booking: expandedBooking,
+    actorRole: actor.role === "doctor" ? "doctor" : "user",
+  });
+}
+
 export async function updateBookingStatus(input: UpdateBookingStatusInput) {
   if (!isDatabaseConnected()) {
     const booking = demoStore.updateBookingStatus(input);
@@ -1060,6 +1264,7 @@ export async function updateBookingStatus(input: UpdateBookingStatusInput) {
       metadata: {
         bookingId: booking.id,
         status: booking.status,
+        consultationMode: booking.consultationMode,
       },
     });
 
@@ -1137,6 +1342,7 @@ export async function updateBookingStatus(input: UpdateBookingStatusInput) {
     metadata: {
       bookingId: expandedBooking.id,
       status: expandedBooking.status,
+      consultationMode: expandedBooking.consultationMode,
     },
   });
 
@@ -1157,6 +1363,7 @@ export async function rescheduleBooking(input: RescheduleBookingInput) {
         metadata: {
           bookingId: booking.id,
           status: booking.status,
+          consultationMode: booking.consultationMode,
         },
       });
     }
@@ -1251,6 +1458,7 @@ export async function rescheduleBooking(input: RescheduleBookingInput) {
       metadata: {
         bookingId: expandedBooking.id,
         status: expandedBooking.status,
+        consultationMode: expandedBooking.consultationMode,
       },
     });
   }
@@ -1272,6 +1480,7 @@ export async function cancelBooking(input: CancelBookingInput) {
         metadata: {
           bookingId: booking.id,
           status: booking.status,
+          consultationMode: booking.consultationMode,
         },
       });
     }
@@ -1337,6 +1546,7 @@ export async function cancelBooking(input: CancelBookingInput) {
       metadata: {
         bookingId: expandedBooking.id,
         status: expandedBooking.status,
+        consultationMode: expandedBooking.consultationMode,
       },
     });
   }

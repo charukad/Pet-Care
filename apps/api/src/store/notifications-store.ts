@@ -14,6 +14,8 @@ export type NotificationMetadata = {
   bookingId?: string;
   prescriptionId?: string;
   status?: string;
+  reminderStage?: "24h" | "1h";
+  consultationMode?: "Clinic" | "Video";
 };
 
 export type NotificationView = {
@@ -100,6 +102,33 @@ function sortNotifications(items: NotificationView[]) {
   return [...items].sort((left, right) =>
     right.createdAt.localeCompare(left.createdAt),
   );
+}
+
+export async function hasReminderNotification(input: {
+  userId: string;
+  bookingId: string;
+  reminderStage: "24h" | "1h";
+}) {
+  if (!isDatabaseConnected()) {
+    return fallbackNotifications.some(
+      (notification) =>
+        notification.userId === input.userId &&
+        notification.type === "reminder" &&
+        notification.metadata?.bookingId === input.bookingId &&
+        notification.metadata?.reminderStage === input.reminderStage,
+    );
+  }
+
+  const existingNotification = await Notification.findOne({
+    userAppId: input.userId,
+    type: "reminder",
+    "metadata.bookingId": input.bookingId,
+    "metadata.reminderStage": input.reminderStage,
+  })
+    .select({ appId: 1 })
+    .lean();
+
+  return Boolean(existingNotification);
 }
 
 export async function createNotification(input: {

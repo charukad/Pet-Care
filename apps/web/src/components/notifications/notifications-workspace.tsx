@@ -19,6 +19,13 @@ function getNotificationTarget(notification: AppNotification, role?: string) {
     return "/records";
   }
 
+  if (
+    notification.metadata?.bookingId &&
+    notification.metadata.consultationMode === "Video"
+  ) {
+    return `/consultations/${notification.metadata.bookingId}`;
+  }
+
   if (notification.type === "booking") {
     return role === "doctor"
       ? "/dashboard/doctor"

@@ -223,6 +223,8 @@ export type AppNotification = {
     bookingId?: string;
     prescriptionId?: string;
     status?: string;
+    reminderStage?: "24h" | "1h";
+    consultationMode?: ConsultationMode;
   };
   readAt?: string;
   createdAt: string;
@@ -232,6 +234,35 @@ export type AppNotification = {
 export type NotificationsFeed = {
   items: AppNotification[];
   unreadCount: number;
+};
+
+export type ConsultationAccessState =
+  | "not_video"
+  | "inactive"
+  | "awaiting_confirmation"
+  | "scheduled"
+  | "ready"
+  | "expired";
+
+export type ConsultationAccessView = {
+  actorRole: "user" | "doctor";
+  state: ConsultationAccessState;
+  canJoin: boolean;
+  provider: string;
+  roomCode: string | null;
+  roomUrl: string | null;
+  opensAt: string | null;
+  expiresAt: string | null;
+  message: string;
+  booking: {
+    id: string;
+    scheduledAt: string;
+    status: BookingStatus;
+    consultationMode: ConsultationMode;
+    petName: string;
+    ownerName: string;
+    doctorName: string;
+  };
 };
 
 export type PrescriptionMedicine = {

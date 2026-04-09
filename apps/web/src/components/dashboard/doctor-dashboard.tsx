@@ -547,6 +547,14 @@ export function DoctorDashboard() {
                           : "Write prescription"}
                       </button>
                     ) : null}
+                    {booking.consultationMode === "Video" ? (
+                      <Link
+                        href={`/consultations/${booking.id}`}
+                        className="rounded-full border border-[color:var(--pc-line)] px-4 py-2 text-sm font-medium text-[color:var(--pc-ink)] transition hover:border-[color:var(--pc-sky)] hover:bg-white"
+                      >
+                        Open consultation
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
 

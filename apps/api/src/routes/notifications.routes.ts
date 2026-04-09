@@ -4,6 +4,7 @@ import {
   listNotificationsForUser,
   markAllNotificationsRead,
   markNotificationRead,
+  syncAppointmentReminders,
 } from "../store";
 
 const notificationsRouter = Router();
@@ -16,6 +17,8 @@ notificationsRouter.get("/me", async (request, response) => {
   const parsedLimit =
     typeof limitValue === "string" ? Number.parseInt(limitValue, 10) : undefined;
   const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+
+  await syncAppointmentReminders(request.user!);
 
   response.json({
     success: true,

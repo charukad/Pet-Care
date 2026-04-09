@@ -182,11 +182,11 @@ This plan converts the overview into a complete execution checklist so the full 
 ## Phase 11 - Remote Consultation and Media Support
 
 - [ ] Integrate Google Meet or Zoom for MVP remote consultations
-- [ ] Generate or store meeting links per eligible booking
-- [ ] Show consultation join links to users and doctors at the correct time
-- [ ] Add consultation readiness checks for booking status and permissions
+- [x] Generate or store meeting links per eligible booking
+- [x] Show consultation join links to users and doctors at the correct time
+- [x] Add consultation readiness checks for booking status and permissions
 - [ ] Ensure uploaded pet condition images are visible during consultation workflows
-- [ ] Handle expired, cancelled, or rejected consultation sessions cleanly
+- [x] Handle expired, cancelled, or rejected consultation sessions cleanly
 
 ## Phase 12 - Ratings, Reviews, Notifications, and Engagement
 
@@ -195,7 +195,7 @@ This plan converts the overview into a complete execution checklist so the full 
 - [ ] Show doctor ratings on profile and listing pages
 - [ ] Add moderation or admin review controls for abusive feedback
 - [ ] Integrate email notifications for registration, booking updates, reminders, and prescription availability
-- [ ] Send appointment reminder notifications before consultation time
+- [x] Send appointment reminder notifications before consultation time
 - [x] Send notification on booking acceptance and rejection
 - [x] Send notification when a new prescription is issued
 - [x] Build in-app notification center if included in the final release scope
