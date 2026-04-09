@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
-import type { Booking, Pet } from "@/types/app";
+import type { Booking, Pet, Prescription } from "@/types/app";
 
 function formatDateTime(isoString: string) {
   return new Intl.DateTimeFormat("en-LK", {
@@ -17,6 +17,7 @@ export function UserDashboard() {
   const { isAuthenticated, isLoading, session, user } = useAuth();
   const [pets, setPets] = useState<Pet[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasLoadedDashboard, setHasLoadedDashboard] = useState(false);
   const shouldLoadDashboard = Boolean(session?.token && user?.role === "user");
@@ -35,14 +36,18 @@ export function UserDashboard() {
       api.get<ApiResponse<Booking[]>>("/bookings/me", {
         headers: createAuthHeaders(session.token),
       }),
+      api.get<ApiResponse<Prescription[]>>("/prescriptions/me", {
+        headers: createAuthHeaders(session.token),
+      }),
     ])
-      .then(([petsResponse, bookingsResponse]) => {
+      .then(([petsResponse, bookingsResponse, prescriptionsResponse]) => {
         if (!isMounted) {
           return;
         }
 
         setPets(petsResponse.data.data);
         setBookings(bookingsResponse.data.data);
+        setPrescriptions(prescriptionsResponse.data.data);
       })
       .catch((error) => {
         if (!isMounted) {
@@ -84,7 +89,7 @@ export function UserDashboard() {
             Sign in to open your dashboard.
           </h1>
           <p className="mt-4 text-base leading-8 text-[color:var(--pc-muted)]">
-            Your pet owner dashboard shows bookings, pets, and quick access to the next appointment flow.
+            Your pet owner dashboard shows bookings, pets, prescriptions, and quick access to your records.
           </p>
           <Link
             href="/auth/login?next=/dashboard/user"
@@ -109,6 +114,8 @@ export function UserDashboard() {
     );
   }
 
+  const recentPrescriptions = prescriptions.slice(0, 3);
+
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-14 sm:px-6 lg:px-8">
       <section className="space-y-4">
@@ -119,7 +126,7 @@ export function UserDashboard() {
           Welcome back, {user.name}.
         </h1>
         <p className="max-w-2xl text-base leading-8 text-[color:var(--pc-muted)]">
-          Your core owner flow is live now: pet creation, booking, and appointment status tracking.
+          Your booking, prescription, and medical-record flow now lives in one place.
         </p>
       </section>
 
@@ -129,7 +136,7 @@ export function UserDashboard() {
         </div>
       ) : null}
 
-      <section className="grid gap-5 sm:grid-cols-3">
+      <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-[1.8rem] border border-[color:var(--pc-line)] bg-white/90 p-6 shadow-[0_24px_80px_rgba(8,47,73,0.08)]">
           <p className="text-sm text-[color:var(--pc-muted)]">Pets</p>
           <p className="mt-3 text-4xl font-semibold text-[color:var(--pc-ink)]">{pets.length}</p>
@@ -144,6 +151,12 @@ export function UserDashboard() {
           <p className="text-sm text-[color:var(--pc-muted)]">Pending</p>
           <p className="mt-3 text-4xl font-semibold text-[color:var(--pc-ink)]">
             {bookings.filter((booking) => booking.status === "pending").length}
+          </p>
+        </div>
+        <div className="rounded-[1.8rem] border border-[color:var(--pc-line)] bg-white/90 p-6 shadow-[0_24px_80px_rgba(8,47,73,0.08)]">
+          <p className="text-sm text-[color:var(--pc-muted)]">Prescriptions</p>
+          <p className="mt-3 text-4xl font-semibold text-[color:var(--pc-ink)]">
+            {prescriptions.length}
           </p>
         </div>
       </section>
@@ -189,43 +202,106 @@ export function UserDashboard() {
         </article>
 
         <article className="rounded-[2rem] border border-[color:var(--pc-line)] bg-white/90 p-6 shadow-[0_24px_80px_rgba(8,47,73,0.08)]">
-          <h2 className="text-xl font-semibold text-[color:var(--pc-ink)]">Bookings</h2>
-          <p className="mt-1 text-sm text-[color:var(--pc-muted)]">
-            Track doctor responses and appointment timing here.
-          </p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-[color:var(--pc-ink)]">
+                Recent prescriptions
+              </h2>
+              <p className="mt-1 text-sm text-[color:var(--pc-muted)]">
+                New treatment notes and follow-up guidance appear here first.
+              </p>
+            </div>
+            <Link
+              href="/records"
+              className="rounded-full bg-[color:var(--pc-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            >
+              Open records
+            </Link>
+          </div>
+
           <div className="mt-6 space-y-4">
-            {bookings.length > 0 ? (
-              bookings.map((booking) => (
+            {recentPrescriptions.length > 0 ? (
+              recentPrescriptions.map((prescription) => (
                 <div
-                  key={booking.id}
+                  key={prescription.id}
                   className="rounded-[1.35rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] p-4"
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="font-semibold text-[color:var(--pc-ink)]">
-                        {booking.doctor.name}
+                        {prescription.diagnosis}
                       </p>
                       <p className="mt-1 text-sm text-[color:var(--pc-muted)]">
-                        {booking.pet.name} · {booking.consultationMode}
+                        {prescription.pet.name} · {prescription.doctor.name}
                       </p>
                     </div>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--pc-muted)]">
-                      {booking.status}
+                    <span className="text-sm text-[color:var(--pc-muted)]">
+                      {formatDateTime(prescription.issuedAt)}
                     </span>
                   </div>
                   <p className="mt-3 text-sm text-[color:var(--pc-muted)]">
-                    {formatDateTime(booking.scheduledAt)}
+                    {prescription.medicines.length} medicine
+                    {prescription.medicines.length === 1 ? "" : "s"}
+                    {prescription.followUp ? ` · Follow-up: ${prescription.followUp}` : ""}
                   </p>
+                  {prescription.notes ? (
+                    <p className="mt-3 text-sm leading-7 text-[color:var(--pc-muted)]">
+                      {prescription.notes}
+                    </p>
+                  ) : null}
                 </div>
               ))
             ) : (
               <div className="rounded-[1.35rem] border border-dashed border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-6 text-sm text-[color:var(--pc-muted)]">
-                No bookings yet.
+                No prescriptions yet. They will appear here after a doctor completes treatment notes.
               </div>
             )}
           </div>
         </article>
       </section>
+
+      <article className="rounded-[2rem] border border-[color:var(--pc-line)] bg-white/90 p-6 shadow-[0_24px_80px_rgba(8,47,73,0.08)]">
+        <h2 className="text-xl font-semibold text-[color:var(--pc-ink)]">Bookings</h2>
+        <p className="mt-1 text-sm text-[color:var(--pc-muted)]">
+          Track doctor responses and appointment timing here.
+        </p>
+        <div className="mt-6 space-y-4">
+          {bookings.length > 0 ? (
+            bookings.map((booking) => (
+              <div
+                key={booking.id}
+                className="rounded-[1.35rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] p-4"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-[color:var(--pc-ink)]">
+                      {booking.doctor.name}
+                    </p>
+                    <p className="mt-1 text-sm text-[color:var(--pc-muted)]">
+                      {booking.pet.name} · {booking.consultationMode}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--pc-muted)]">
+                    {booking.status}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm text-[color:var(--pc-muted)]">
+                  {formatDateTime(booking.scheduledAt)}
+                </p>
+                {booking.notes ? (
+                  <p className="mt-3 text-sm leading-7 text-[color:var(--pc-muted)]">
+                    {booking.notes}
+                  </p>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <div className="rounded-[1.35rem] border border-dashed border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-6 text-sm text-[color:var(--pc-muted)]">
+              No bookings yet.
+            </div>
+          )}
+        </div>
+      </article>
     </main>
   );
 }

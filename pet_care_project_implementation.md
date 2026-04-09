@@ -119,9 +119,9 @@ This plan converts the overview into a complete execution checklist so the full 
 - [x] Allow doctors to reject bookings
 - [x] Allow doctors to mark consultations as completed
 - [x] Allow doctors to access booking history
-- [ ] Allow doctors to view chat conversations with pet owners
+- [x] Allow doctors to view chat conversations with pet owners
 - [ ] Allow doctors to write consultation notes
-- [ ] Allow doctors to generate prescriptions
+- [x] Allow doctors to generate prescriptions
 
 ## Phase 7 - User Module and Pet Management
 
@@ -131,7 +131,7 @@ This plan converts the overview into a complete execution checklist so the full 
 - [ ] Allow users to edit pet profiles
 - [ ] Allow users to archive or remove pet profiles
 - [ ] Store pet type, age, history, and supporting medical data
-- [ ] Build pet medical history timeline view
+- [x] Build pet medical history timeline view
 - [ ] Attach prescriptions and consultation outcomes to each pet
 - [ ] Allow users to upload pet condition images
 - [ ] Validate file size, type, and upload security rules
@@ -170,11 +170,11 @@ This plan converts the overview into a complete execution checklist so the full 
 
 ## Phase 10 - Prescription, Consultation, and Medical Records
 
-- [ ] Build prescription creation workflow for doctors
-- [ ] Support structured prescription entry with medicines, dosage, notes, and follow-up guidance
+- [x] Build prescription creation workflow for doctors
+- [x] Support structured prescription entry with medicines, dosage, notes, and follow-up guidance
 - [ ] Support PDF prescription upload
-- [ ] Store prescriptions against doctor, user, pet, and booking records
-- [ ] Allow users to view prescriptions
+- [x] Store prescriptions against doctor, user, pet, and booking records
+- [x] Allow users to view prescriptions
 - [ ] Allow users to download prescriptions
 - [ ] Add consultation summary records after each completed appointment
 - [ ] Add searchable medical history across consultations, prescriptions, and notes
@@ -288,30 +288,30 @@ This plan converts the overview into a complete execution checklist so the full 
 
 ## Required Pages Checklist
 
-- [ ] Home page
-- [ ] Doctor listing page
-- [ ] Doctor profile page
-- [ ] Booking page
+- [x] Home page
+- [x] Doctor listing page
+- [x] Doctor profile page
+- [x] Booking page
 - [x] Chat page
-- [ ] User dashboard
-- [ ] Doctor dashboard
-- [ ] Admin dashboard
-- [ ] Authentication pages
+- [x] User dashboard
+- [x] Doctor dashboard
+- [x] Admin dashboard
+- [x] Authentication pages
 - [ ] Pet management pages
-- [ ] Prescription and medical history pages
+- [x] Prescription and medical history pages
 - [ ] Notification views
 - [ ] Payment views if payments are enabled
 
 ## Required Backend Modules Checklist
 
-- [ ] Authentication module
+- [x] Authentication module
 - [ ] User module
 - [ ] Doctor module
-- [ ] Pet module
-- [ ] Booking module
+- [x] Pet module
+- [x] Booking module
 - [ ] Availability and calendar module
 - [x] Messaging and Socket.io module
-- [ ] Prescription module
+- [x] Prescription module
 - [ ] Upload and storage module
 - [ ] Review and rating module
 - [ ] Notification and email module
@@ -326,7 +326,7 @@ This plan converts the overview into a complete execution checklist so the full 
 - [ ] Doctors can manage availability, respond to bookings, chat with users, provide consultations, and generate prescriptions
 - [ ] Admin can manage doctors, users, bookings, and system monitoring from one platform
 - [ ] Real-time chat works reliably
-- [ ] Booking status flow supports Pending, Accepted, Rejected, and Completed
+- [x] Booking status flow supports Pending, Accepted, Rejected, and Completed
 - [ ] Prescription workflow supports structured data and PDF upload
 - [ ] Remote consultation workflow is functional for MVP
 - [ ] Ratings, reviews, notifications, image uploads, and smart calendar features are complete

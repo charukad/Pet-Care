@@ -1,15 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { PawPrint, Stethoscope } from "lucide-react";
+import { ClipboardPlus, PawPrint, Stethoscope } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
-
-const navigationItems = [
-  { href: "/", label: "Home" },
-  { href: "/doctors", label: "Doctors" },
-  { href: "/booking", label: "Booking" },
-  { href: "/chat", label: "Chat" },
-];
 
 export function SiteHeader() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
@@ -35,7 +28,13 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">
-          {navigationItems.map((item) => (
+          {[
+            { href: "/", label: "Home" },
+            { href: "/doctors", label: "Doctors" },
+            { href: "/booking", label: "Booking" },
+            { href: "/chat", label: "Chat" },
+            ...(user?.role === "user" ? [{ href: "/records", label: "Records" }] : []),
+          ].map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -76,11 +75,20 @@ export function SiteHeader() {
             </Link>
           )}
           <Link
-            href="/doctors"
+            href={user?.role === "user" ? "/records" : "/doctors"}
             className="inline-flex items-center gap-2 rounded-full bg-[color:var(--pc-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           >
-            <Stethoscope className="h-4 w-4" />
-            Find a vet
+            {user?.role === "user" ? (
+              <>
+                <ClipboardPlus className="h-4 w-4" />
+                Records
+              </>
+            ) : (
+              <>
+                <Stethoscope className="h-4 w-4" />
+                Find a vet
+              </>
+            )}
           </Link>
         </div>
       </div>

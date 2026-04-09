@@ -104,6 +104,76 @@ export type ConversationView = {
   lastActivityAt: string;
 };
 
+export type PrescriptionMedicine = {
+  name: string;
+  dosage?: string;
+  frequency?: string;
+  duration?: string;
+  instructions?: string;
+};
+
+export type PrescriptionRecord = {
+  id: string;
+  bookingId: string;
+  doctorProfileId: string;
+  userId: string;
+  petId: string;
+  diagnosis: string;
+  notes?: string;
+  followUp?: string;
+  medicines: PrescriptionMedicine[];
+  issuedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PrescriptionView = {
+  id: string;
+  diagnosis: string;
+  notes?: string;
+  followUp?: string;
+  medicines: PrescriptionMedicine[];
+  issuedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  booking: {
+    id: string;
+    scheduledAt: string;
+    status: BookingStatus;
+    consultationMode: "Clinic" | "Video";
+  };
+  doctor: {
+    id: string;
+    name: string;
+    specialization: string;
+    location: string;
+  };
+  pet: {
+    id: string;
+    name: string;
+    type: string;
+    breed?: string;
+  };
+  owner: {
+    id: string;
+    name: string;
+    email: string;
+  };
+};
+
+export type MedicalHistoryPetView = {
+  pet: {
+    id: string;
+    name: string;
+    type: string;
+    breed?: string;
+    age?: number;
+    sex: "male" | "female" | "unknown";
+  };
+  bookings: BookingView[];
+  prescriptions: PrescriptionView[];
+};
+
 type CreatePetInput = {
   userId: string;
   name: string;
@@ -133,6 +203,15 @@ type CreateChatMessageInput = {
   actor: AuthenticatedUser;
   conversationId: string;
   content: string;
+};
+
+type CreatePrescriptionInput = {
+  actor: AuthenticatedUser;
+  bookingId: string;
+  diagnosis: string;
+  notes?: string;
+  followUp?: string;
+  medicines: PrescriptionMedicine[];
 };
 
 function createTimestamp() {
@@ -263,6 +342,8 @@ const chatMessages: ChatMessageRecord[] = [
   },
 ];
 
+const prescriptions: PrescriptionRecord[] = [];
+
 function findUserRecordById(userId: string) {
   return users.find((user) => user.id === userId);
 }
@@ -368,6 +449,53 @@ function expandChatMessage(message: ChatMessageRecord): ChatMessageView {
       id: sender.id,
       name: sender.name,
       role: sender.role,
+    },
+  };
+}
+
+function expandPrescription(prescription: PrescriptionRecord): PrescriptionView {
+  const booking = bookings.find(
+    (candidateBooking) => candidateBooking.id === prescription.bookingId,
+  );
+  const owner = findUserRecordById(prescription.userId);
+  const pet = findPetRecord(prescription.petId);
+  const doctor = findDoctorProfile(prescription.doctorProfileId);
+
+  if (!booking || !owner || !pet || !doctor) {
+    throw new HttpError(500, "Prescription references missing related data.");
+  }
+
+  return {
+    id: prescription.id,
+    diagnosis: prescription.diagnosis,
+    notes: prescription.notes,
+    followUp: prescription.followUp,
+    medicines: prescription.medicines,
+    issuedAt: prescription.issuedAt,
+    createdAt: prescription.createdAt,
+    updatedAt: prescription.updatedAt,
+    booking: {
+      id: booking.id,
+      scheduledAt: booking.scheduledAt,
+      status: booking.status,
+      consultationMode: booking.consultationMode,
+    },
+    doctor: {
+      id: doctor.id,
+      name: doctor.name,
+      specialization: doctor.specialization,
+      location: doctor.location,
+    },
+    pet: {
+      id: pet.id,
+      name: pet.name,
+      type: pet.type,
+      breed: pet.breed,
+    },
+    owner: {
+      id: owner.id,
+      name: owner.name,
+      email: owner.email,
     },
   };
 }
@@ -769,4 +897,139 @@ export function getConversationDetails(conversationId: string) {
       userId: doctorUser.id,
     },
   };
+}
+
+function getBookingForDoctor(doctorProfileId: string, bookingId: string) {
+  const booking = bookings.find((candidateBooking) => candidateBooking.id === bookingId);
+
+  if (!booking) {
+    throw new HttpError(404, "Booking could not be found.");
+  }
+
+  if (booking.doctorProfileId !== doctorProfileId) {
+    throw new HttpError(403, "You can only access prescriptions for your own bookings.");
+  }
+
+  return booking;
+}
+
+export function createPrescription(input: CreatePrescriptionInput) {
+  const booking = bookings.find((candidateBooking) => candidateBooking.id === input.bookingId);
+
+  if (!booking) {
+    throw new HttpError(404, "Booking could not be found.");
+  }
+
+  if (input.actor.role !== "doctor" || input.actor.doctorProfileId !== booking.doctorProfileId) {
+    throw new HttpError(403, "You can only issue prescriptions for your own bookings.");
+  }
+
+  if (!["accepted", "completed"].includes(booking.status)) {
+    throw new HttpError(
+      400,
+      "Prescriptions can only be issued for accepted or completed bookings.",
+    );
+  }
+
+  const normalizedDiagnosis = input.diagnosis.trim();
+
+  if (!normalizedDiagnosis) {
+    throw new HttpError(400, "Diagnosis is required.");
+  }
+
+  const normalizedMedicines = input.medicines
+    .map((medicine) => ({
+      name: medicine.name.trim(),
+      dosage: normalizeOptionalText(medicine.dosage),
+      frequency: normalizeOptionalText(medicine.frequency),
+      duration: normalizeOptionalText(medicine.duration),
+      instructions: normalizeOptionalText(medicine.instructions),
+    }))
+    .filter((medicine) => medicine.name);
+
+  if (normalizedMedicines.length === 0) {
+    throw new HttpError(400, "At least one medicine is required.");
+  }
+
+  const timestamp = createTimestamp();
+  const prescription: PrescriptionRecord = {
+    id: randomUUID(),
+    bookingId: booking.id,
+    doctorProfileId: booking.doctorProfileId,
+    userId: booking.userId,
+    petId: booking.petId,
+    diagnosis: normalizedDiagnosis,
+    notes: normalizeOptionalText(input.notes),
+    followUp: normalizeOptionalText(input.followUp),
+    medicines: normalizedMedicines,
+    issuedAt: timestamp,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  prescriptions.push(prescription);
+
+  return expandPrescription(prescription);
+}
+
+export function listPrescriptionsForUser(userId: string) {
+  return prescriptions
+    .filter((prescription) => prescription.userId === userId)
+    .sort((left, right) => right.issuedAt.localeCompare(left.issuedAt))
+    .map(expandPrescription);
+}
+
+export function listPrescriptionsForDoctor(doctorProfileId: string) {
+  return prescriptions
+    .filter((prescription) => prescription.doctorProfileId === doctorProfileId)
+    .sort((left, right) => right.issuedAt.localeCompare(left.issuedAt))
+    .map(expandPrescription);
+}
+
+export function listPrescriptionsForBooking(
+  doctorProfileId: string,
+  bookingId: string,
+) {
+  getBookingForDoctor(doctorProfileId, bookingId);
+
+  return prescriptions
+    .filter((prescription) => prescription.bookingId === bookingId)
+    .sort((left, right) => right.issuedAt.localeCompare(left.issuedAt))
+    .map(expandPrescription);
+}
+
+export function getMedicalHistoryForUser(userId: string) {
+  const userPets = listPetsForUser(userId);
+
+  return userPets.map((pet) => {
+    const petBookings = sortBookingsBySchedule(
+      bookings.filter(
+        (booking) =>
+          booking.userId === userId &&
+          booking.petId === pet.id &&
+          booking.status !== "rejected" &&
+          booking.status !== "cancelled",
+      ),
+    ).map(expandBooking);
+
+    const petPrescriptions = prescriptions
+      .filter(
+        (prescription) => prescription.userId === userId && prescription.petId === pet.id,
+      )
+      .sort((left, right) => right.issuedAt.localeCompare(left.issuedAt))
+      .map(expandPrescription);
+
+    return {
+      pet: {
+        id: pet.id,
+        name: pet.name,
+        type: pet.type,
+        breed: pet.breed,
+        age: pet.age,
+        sex: pet.sex,
+      },
+      bookings: petBookings,
+      prescriptions: petPrescriptions,
+    } satisfies MedicalHistoryPetView;
+  });
 }

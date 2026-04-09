@@ -115,3 +115,58 @@ export type ConversationDetails = {
   };
   messages: ChatMessage[];
 };
+
+export type PrescriptionMedicine = {
+  name: string;
+  dosage?: string;
+  frequency?: string;
+  duration?: string;
+  instructions?: string;
+};
+
+export type Prescription = {
+  id: string;
+  diagnosis: string;
+  notes?: string;
+  followUp?: string;
+  medicines: PrescriptionMedicine[];
+  issuedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  booking: {
+    id: string;
+    scheduledAt: string;
+    status: BookingStatus;
+    consultationMode: "Clinic" | "Video";
+  };
+  doctor: {
+    id: string;
+    name: string;
+    specialization: string;
+    location: string;
+  };
+  pet: {
+    id: string;
+    name: string;
+    type: string;
+    breed?: string;
+  };
+  owner: {
+    id: string;
+    name: string;
+    email: string;
+  };
+};
+
+export type MedicalHistoryPet = {
+  pet: {
+    id: string;
+    name: string;
+    type: string;
+    breed?: string;
+    age?: number;
+    sex: "male" | "female" | "unknown";
+  };
+  bookings: Booking[];
+  prescriptions: Prescription[];
+};
