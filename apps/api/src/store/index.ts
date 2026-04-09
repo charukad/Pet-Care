@@ -11,6 +11,7 @@ import type { AuthenticatedUser } from "../types/auth";
 import { HttpError } from "../utils/http-error";
 import { hashPassword, verifyPassword } from "../utils/password";
 import * as demoStore from "./demo-store";
+import { createNotification } from "./notifications-store";
 import type {
   BookingRecord,
   BookingStatus,
@@ -385,6 +386,10 @@ async function findUserRecordById(userId: string) {
 }
 
 async function findDoctorUserByProfileId(doctorProfileId: string) {
+  if (!isDatabaseConnected()) {
+    return demoStore.getDoctorUserByProfileId(doctorProfileId);
+  }
+
   const user = (await User.findOne({ doctorProfileId }).lean()) as DbUser | null;
   return user ? mapAuthenticatedUser(user) : null;
 }
@@ -536,7 +541,23 @@ export async function createPet(input: CreatePetInput) {
 
 export async function createBooking(input: CreateBookingInput) {
   if (!isDatabaseConnected()) {
-    return demoStore.createBooking(input);
+    const booking = demoStore.createBooking(input);
+    const doctorUser = await findDoctorUserByProfileId(input.doctorProfileId);
+
+    if (doctorUser) {
+      await createNotification({
+        userId: doctorUser.id,
+        title: "New booking request",
+        message: `${booking.owner.name} requested a ${booking.consultationMode.toLowerCase()} consultation for ${booking.pet.name}.`,
+        type: "booking",
+        metadata: {
+          bookingId: booking.id,
+          status: booking.status,
+        },
+      });
+    }
+
+    return booking;
   }
 
   const owner = await findUserRecordById(input.userId);
@@ -612,6 +633,25 @@ export async function createBooking(input: CreateBookingInput) {
     mapBookingRecord(booking.toObject() as DbBooking),
   ]);
 
+  if (!expandedBooking) {
+    throw new HttpError(500, "Booking could not be expanded after creation.");
+  }
+
+  const doctorUser = await findDoctorUserByProfileId(expandedBooking.doctor.id);
+
+  if (doctorUser) {
+    await createNotification({
+      userId: doctorUser.id,
+      title: "New booking request",
+      message: `${expandedBooking.owner.name} requested a ${expandedBooking.consultationMode.toLowerCase()} consultation for ${expandedBooking.pet.name}.`,
+      type: "booking",
+      metadata: {
+        bookingId: expandedBooking.id,
+        status: expandedBooking.status,
+      },
+    });
+  }
+
   return expandedBooking;
 }
 
@@ -648,7 +688,25 @@ export async function listAllBookings() {
 
 export async function updateBookingStatus(input: UpdateBookingStatusInput) {
   if (!isDatabaseConnected()) {
-    return demoStore.updateBookingStatus(input);
+    const booking = demoStore.updateBookingStatus(input);
+
+    await createNotification({
+      userId: booking.owner.id,
+      title: `Booking ${booking.status}`,
+      message:
+        booking.status === "rejected"
+          ? `${booking.doctor.name} could not confirm your appointment for ${booking.pet.name}.`
+          : booking.status === "completed"
+            ? `${booking.doctor.name} marked the consultation for ${booking.pet.name} as completed.`
+            : `${booking.doctor.name} accepted your appointment for ${booking.pet.name}.`,
+      type: "booking",
+      metadata: {
+        bookingId: booking.id,
+        status: booking.status,
+      },
+    });
+
+    return booking;
   }
 
   const bookingDocument = await Booking.findOne({ appId: input.bookingId });
@@ -704,6 +762,26 @@ export async function updateBookingStatus(input: UpdateBookingStatusInput) {
   const [expandedBooking] = await expandBookings([
     mapBookingRecord(bookingDocument.toObject() as DbBooking),
   ]);
+
+  if (!expandedBooking) {
+    throw new HttpError(500, "Booking could not be expanded after update.");
+  }
+
+  await createNotification({
+    userId: expandedBooking.owner.id,
+    title: `Booking ${expandedBooking.status}`,
+    message:
+      expandedBooking.status === "rejected"
+        ? `${expandedBooking.doctor.name} could not confirm your appointment for ${expandedBooking.pet.name}.`
+        : expandedBooking.status === "completed"
+          ? `${expandedBooking.doctor.name} marked the consultation for ${expandedBooking.pet.name} as completed.`
+          : `${expandedBooking.doctor.name} accepted your appointment for ${expandedBooking.pet.name}.`,
+    type: "booking",
+    metadata: {
+      bookingId: expandedBooking.id,
+      status: expandedBooking.status,
+    },
+  });
 
   return expandedBooking;
 }
@@ -933,7 +1011,20 @@ export async function getConversationDetails(conversationId: string) {
 
 export async function createPrescription(input: CreatePrescriptionInput) {
   if (!isDatabaseConnected()) {
-    return demoStore.createPrescription(input);
+    const prescription = demoStore.createPrescription(input);
+
+    await createNotification({
+      userId: prescription.owner.id,
+      title: "New prescription available",
+      message: `${prescription.doctor.name} added a prescription for ${prescription.pet.name}.`,
+      type: "prescription",
+      metadata: {
+        bookingId: prescription.booking.id,
+        prescriptionId: prescription.id,
+      },
+    });
+
+    return prescription;
   }
 
   const booking = (await Booking.findOne({
@@ -995,6 +1086,21 @@ export async function createPrescription(input: CreatePrescriptionInput) {
   const [expandedPrescription] = await expandPrescriptions([
     mapPrescriptionRecord(prescription.toObject() as DbPrescription),
   ]);
+
+  if (!expandedPrescription) {
+    throw new HttpError(500, "Prescription could not be expanded after creation.");
+  }
+
+  await createNotification({
+    userId: expandedPrescription.owner.id,
+    title: "New prescription available",
+    message: `${expandedPrescription.doctor.name} added a prescription for ${expandedPrescription.pet.name}.`,
+    type: "prescription",
+    metadata: {
+      bookingId: expandedPrescription.booking.id,
+      prescriptionId: expandedPrescription.id,
+    },
+  });
 
   return expandedPrescription;
 }
@@ -1060,3 +1166,9 @@ export async function getMedicalHistoryForUser(userId: string) {
     prescriptions: prescriptions.filter((prescription) => prescription.pet.id === pet.id),
   })) satisfies MedicalHistoryPetView[];
 }
+
+export {
+  listNotificationsForUser,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "./notifications-store";

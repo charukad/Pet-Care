@@ -583,6 +583,11 @@ export function getUserById(userId: string) {
   return user ? sanitizeUser(user) : null;
 }
 
+export function getDoctorUserByProfileId(doctorProfileId: string) {
+  const user = findDoctorUserByProfileId(doctorProfileId);
+  return user ? sanitizeUser(user) : null;
+}
+
 export function registerUser(input: {
   name: string;
   email: string;

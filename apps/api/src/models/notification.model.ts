@@ -2,11 +2,18 @@ import { Schema, model, models } from "mongoose";
 
 const notificationSchema = new Schema(
   {
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    appId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
+    userAppId: {
+      type: String,
       required: true,
       index: true,
+      trim: true,
     },
     title: {
       type: String,
@@ -35,5 +42,6 @@ const notificationSchema = new Schema(
   },
 );
 
-export const Notification =
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const Notification: any =
   models.Notification || model("Notification", notificationSchema);

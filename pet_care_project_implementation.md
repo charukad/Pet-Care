@@ -196,9 +196,9 @@ This plan converts the overview into a complete execution checklist so the full 
 - [ ] Add moderation or admin review controls for abusive feedback
 - [ ] Integrate email notifications for registration, booking updates, reminders, and prescription availability
 - [ ] Send appointment reminder notifications before consultation time
-- [ ] Send notification on booking acceptance and rejection
-- [ ] Send notification when a new prescription is issued
-- [ ] Build in-app notification center if included in the final release scope
+- [x] Send notification on booking acceptance and rejection
+- [x] Send notification when a new prescription is issued
+- [x] Build in-app notification center if included in the final release scope
 
 ## Phase 13 - Payments
 
@@ -299,7 +299,7 @@ This plan converts the overview into a complete execution checklist so the full 
 - [x] Authentication pages
 - [ ] Pet management pages
 - [x] Prescription and medical history pages
-- [ ] Notification views
+- [x] Notification views
 - [ ] Payment views if payments are enabled
 
 ## Required Backend Modules Checklist

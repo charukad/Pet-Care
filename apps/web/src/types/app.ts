@@ -125,6 +125,33 @@ export type ConversationDetails = {
   messages: ChatMessage[];
 };
 
+export type NotificationType =
+  | "booking"
+  | "reminder"
+  | "prescription"
+  | "system"
+  | "payment";
+
+export type AppNotification = {
+  id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  metadata?: {
+    bookingId?: string;
+    prescriptionId?: string;
+    status?: string;
+  };
+  readAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationsFeed = {
+  items: AppNotification[];
+  unreadCount: number;
+};
+
 export type PrescriptionMedicine = {
   name: string;
   dosage?: string;

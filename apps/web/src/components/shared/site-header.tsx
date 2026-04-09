@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardPlus, PawPrint, Stethoscope } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, ClipboardPlus, PawPrint, Stethoscope } from "lucide-react";
+import { api, createAuthHeaders, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
+import type { NotificationsFeed } from "@/types/app";
 
 export function SiteHeader() {
-  const { isAuthenticated, isLoading, logout, user } = useAuth();
+  const { isAuthenticated, isLoading, logout, session, user } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const dashboardHref =
     user?.role === "doctor"
@@ -13,6 +17,35 @@ export function SiteHeader() {
       : user?.role === "admin"
         ? "/dashboard/admin"
         : "/dashboard/user";
+
+  useEffect(() => {
+    if (!session?.token) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void api
+      .get<ApiResponse<NotificationsFeed>>("/notifications/me?limit=1", {
+        headers: createAuthHeaders(session.token),
+      })
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setUnreadCount(response.data.data.unreadCount);
+      })
+      .catch(() => {
+        if (isMounted) {
+          setUnreadCount(0);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.token]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/45 bg-[color:var(--pc-surface-strong)] backdrop-blur-xl">
@@ -33,6 +66,7 @@ export function SiteHeader() {
             { href: "/doctors", label: "Doctors" },
             { href: "/booking", label: "Booking" },
             { href: "/chat", label: "Chat" },
+            ...(isAuthenticated ? [{ href: "/notifications", label: "Notifications" }] : []),
             ...(user?.role === "user" ? [{ href: "/records", label: "Records" }] : []),
           ].map((item) => (
             <Link
@@ -52,6 +86,18 @@ export function SiteHeader() {
             </div>
           ) : isAuthenticated && user ? (
             <>
+              <Link
+                href="/notifications"
+                className="relative inline-flex items-center gap-2 rounded-full border border-[color:var(--pc-line)] px-4 py-2 text-sm font-medium text-[color:var(--pc-ink)] transition hover:border-[color:var(--pc-sky)] hover:bg-white"
+              >
+                <Bell className="h-4 w-4" />
+                Alerts
+                {session?.token && unreadCount > 0 ? (
+                  <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
+              </Link>
               <Link
                 href={dashboardHref}
                 className="hidden rounded-full border border-[color:var(--pc-line)] px-4 py-2 text-sm font-medium text-[color:var(--pc-ink)] transition hover:border-[color:var(--pc-sky)] hover:bg-white sm:inline-flex"
