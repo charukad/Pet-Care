@@ -1,0 +1,17 @@
+{
+  "name": "pet-care",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @pet-care/api dev\" \"pnpm --filter @pet-care/web dev\"",
+    "dev:api": "pnpm --filter @pet-care/api dev",
+    "dev:web": "pnpm --filter @pet-care/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

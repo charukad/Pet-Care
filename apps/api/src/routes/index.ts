@@ -1,0 +1,31 @@
+import { Router } from "express";
+import { adminRouter } from "./admin.routes";
+import { authRouter } from "./auth.routes";
+import { bookingsRouter } from "./bookings.routes";
+import { chatRouter } from "./chat.routes";
+import { consultationsRouter } from "./consultations.routes";
+import { doctorsRouter } from "./doctors.routes";
+import { healthRouter } from "./health.routes";
+import { notificationsRouter } from "./notifications.routes";
+import { petsRouter } from "./pets.routes";
+import { medicalHistoryRouter, prescriptionsRouter } from "./prescriptions.routes";
+import { publicRouter } from "./public.routes";
+import { reviewsRouter } from "./reviews.routes";
+
+const apiRouter = Router();
+
+apiRouter.use("/auth", authRouter);
+apiRouter.use("/health", healthRouter);
+apiRouter.use("/public", publicRouter);
+apiRouter.use("/doctors", doctorsRouter);
+apiRouter.use("/pets", petsRouter);
+apiRouter.use("/bookings", bookingsRouter);
+apiRouter.use("/chat", chatRouter);
+apiRouter.use("/consultations", consultationsRouter);
+apiRouter.use("/notifications", notificationsRouter);
+apiRouter.use("/prescriptions", prescriptionsRouter);
+apiRouter.use("/medical-history", medicalHistoryRouter);
+apiRouter.use("/reviews", reviewsRouter);
+apiRouter.use("/admin", adminRouter);
+
+export { apiRouter };
