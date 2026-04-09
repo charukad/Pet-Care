@@ -35,6 +35,40 @@ const availabilitySlotSchema = new Schema(
   { _id: false },
 );
 
+const availabilityOverrideSchema = new Schema(
+  {
+    date: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    windows: {
+      type: [availabilityWindowSchema],
+      default: [],
+    },
+    isClosed: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { _id: false },
+);
+
+const blockedSlotSchema = new Schema(
+  {
+    startsAt: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    reason: {
+      type: String,
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const doctorSchema = new Schema(
   {
     doctorProfileId: {
@@ -74,6 +108,14 @@ const doctorSchema = new Schema(
     },
     availability: {
       type: [availabilitySlotSchema],
+      default: [],
+    },
+    availabilityOverrides: {
+      type: [availabilityOverrideSchema],
+      default: [],
+    },
+    blockedSlots: {
+      type: [blockedSlotSchema],
       default: [],
     },
     consultationFee: {

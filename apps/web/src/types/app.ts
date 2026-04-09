@@ -30,6 +30,88 @@ export type Pet = {
   updatedAt: string;
 };
 
+export type ConsultationMode = "Clinic" | "Video";
+
+export type DayOfWeek =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+
+export type AvailabilityWindow = {
+  start: string;
+  end: string;
+};
+
+export type DoctorAvailabilityDay = {
+  dayOfWeek: DayOfWeek;
+  windows: AvailabilityWindow[];
+  isActive: boolean;
+};
+
+export type DoctorAvailabilityOverride = {
+  date: string;
+  windows: AvailabilityWindow[];
+  isClosed: boolean;
+};
+
+export type DoctorBlockedSlot = {
+  startsAt: string;
+  reason?: string;
+};
+
+export type DoctorAvailabilitySlot = {
+  startsAt: string;
+  label: string;
+  isAvailable: boolean;
+  status: "available" | "booked" | "blocked" | "past";
+};
+
+export type PublicDoctorProfile = {
+  id: string;
+  slug: string;
+  name: string;
+  specialization: string;
+  experienceYears: number;
+  rating: number;
+  reviewCount: number;
+  nextAvailable: string;
+  consultationModes: ConsultationMode[];
+  bio: string;
+  languages: string[];
+  clinic: string;
+  location: string;
+};
+
+export type DoctorAvailabilityDateView = {
+  date: string;
+  doctor: {
+    id: string;
+    name: string;
+    specialization: string;
+    location: string;
+    consultationModes: ConsultationMode[];
+  };
+  nextAvailable: string | null;
+  slots: DoctorAvailabilitySlot[];
+};
+
+export type DoctorAvailabilityManagerView = {
+  doctor: {
+    id: string;
+    name: string;
+    specialization: string;
+    consultationModes: ConsultationMode[];
+  };
+  availability: DoctorAvailabilityDay[];
+  availabilityOverrides: DoctorAvailabilityOverride[];
+  blockedSlots: DoctorBlockedSlot[];
+  nextAvailable: string | null;
+};
+
 export type BookingStatus =
   | "pending"
   | "accepted"
@@ -48,7 +130,7 @@ export type BookingStatusEvent = {
 export type Booking = {
   id: string;
   scheduledAt: string;
-  consultationMode: "Clinic" | "Video";
+  consultationMode: ConsultationMode;
   status: BookingStatus;
   notes?: string;
   rejectionReason?: string;
@@ -173,7 +255,7 @@ export type Prescription = {
     id: string;
     scheduledAt: string;
     status: BookingStatus;
-    consultationMode: "Clinic" | "Video";
+    consultationMode: ConsultationMode;
   };
   doctor: {
     id: string;

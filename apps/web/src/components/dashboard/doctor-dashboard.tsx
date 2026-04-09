@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { BookingStatusTimeline } from "@/components/booking/booking-status-timeline";
+import { DoctorAvailabilityManager } from "@/components/dashboard/doctor-availability-manager";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
 import type { Booking, Prescription } from "@/types/app";
@@ -381,6 +382,8 @@ export function DoctorDashboard() {
           </p>
         </div>
       </section>
+
+      <DoctorAvailabilityManager token={session!.token} />
 
       <section className="rounded-[2rem] border border-[color:var(--pc-line)] bg-white/90 p-6 shadow-[0_24px_80px_rgba(8,47,73,0.08)]">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

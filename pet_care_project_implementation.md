@@ -112,9 +112,9 @@ This plan converts the overview into a complete execution checklist so the full 
 - [x] Build the doctor dashboard
 - [ ] Allow doctors to manage profile details
 - [ ] Allow doctors to manage specialization and experience information
-- [ ] Allow doctors to configure availability schedules
-- [ ] Allow doctors to create recurring and custom time slots
-- [ ] Allow doctors to block unavailable dates and times
+- [x] Allow doctors to configure availability schedules
+- [x] Allow doctors to create recurring and custom time slots
+- [x] Allow doctors to block unavailable dates and times
 - [x] Allow doctors to accept bookings
 - [x] Allow doctors to reject bookings
 - [x] Allow doctors to mark consultations as completed
@@ -142,7 +142,7 @@ This plan converts the overview into a complete execution checklist so the full 
 - [x] Allow users to select a doctor
 - [x] Allow users to choose one of their pets for the appointment
 - [x] Allow users to choose a date and time slot
-- [ ] Show live slot availability before booking confirmation
+- [x] Show live slot availability before booking confirmation
 - [x] Create booking records with Pending status
 - [x] Allow doctors to change booking status to Accepted
 - [x] Allow doctors to change booking status to Rejected

@@ -3,11 +3,24 @@ import type { Role } from "../constants/roles";
 import { isDatabaseConnected } from "../config/database";
 import { mockDoctors } from "../data/mock-doctors";
 import { Booking } from "../models/booking.model";
+import { Doctor } from "../models/doctor.model";
 import { Message } from "../models/message.model";
 import { Pet } from "../models/pet.model";
 import { Prescription } from "../models/prescription.model";
 import { User } from "../models/user.model";
 import type { AuthenticatedUser } from "../types/auth";
+import {
+  findNextAvailableSlot,
+  formatRelativeAvailability,
+  getAvailabilitySlotsForDate,
+  getDateKey,
+  normalizeAvailabilityOverrides,
+  normalizeBlockedSlots,
+  normalizeWeeklyAvailability,
+  type DoctorAvailabilityDay,
+  type DoctorAvailabilityOverride,
+  type DoctorBlockedSlot,
+} from "../utils/doctor-availability";
 import { HttpError } from "../utils/http-error";
 import { hashPassword, verifyPassword } from "../utils/password";
 import * as demoStore from "./demo-store";
@@ -20,10 +33,13 @@ import type {
   ChatMessageRecord,
   ChatMessageView,
   ConversationView,
+  DoctorAvailabilityDateView,
+  DoctorAvailabilityManagerView,
   MedicalHistoryPetView,
   PetRecord,
   PrescriptionMedicine,
   PrescriptionRecord,
+  PublicDoctorView,
   PrescriptionView,
 } from "./demo-store";
 
@@ -51,6 +67,25 @@ type DbPet = {
   sex: "male" | "female" | "unknown";
   createdAt: Date | string;
   updatedAt: Date | string;
+};
+
+type DbDoctor = {
+  doctorProfileId: string;
+  userAppId: string;
+  specialization: string;
+  experienceYears: number;
+  bio?: string;
+  qualifications?: string[];
+  languages: string[];
+  availability: DoctorAvailabilityDay[];
+  availabilityOverrides?: DoctorAvailabilityOverride[];
+  blockedSlots?: DoctorBlockedSlot[];
+  consultationFee?: number;
+  ratingAverage: number;
+  reviewCount: number;
+  profileImageUrl?: string;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 };
 
 type DbBooking = {
@@ -143,6 +178,55 @@ function createConversationId(userId: string, doctorProfileId: string) {
   return `${userId}__${doctorProfileId}`;
 }
 
+function getMockDoctorProfile(doctorProfileId: string) {
+  return mockDoctors.find((candidate) => candidate.id === doctorProfileId) ?? null;
+}
+
+function getDoctorAvailabilityConfigFromSources(
+  doctorProfileId: string,
+  doctorRecord?: DbDoctor | null,
+) {
+  const profile = getMockDoctorProfile(doctorProfileId);
+
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    profile,
+    availability: normalizeWeeklyAvailability(
+      doctorRecord?.availability ?? profile.availability,
+    ),
+    availabilityOverrides: normalizeAvailabilityOverrides(
+      doctorRecord?.availabilityOverrides ?? profile.availabilityOverrides,
+    ),
+    blockedSlots: normalizeBlockedSlots(
+      doctorRecord?.blockedSlots ?? profile.blockedSlots,
+    ),
+  };
+}
+
+function mapPublicDoctorView(input: {
+  doctor: (typeof mockDoctors)[number];
+  nextAvailable: string;
+}): PublicDoctorView {
+  return {
+    id: input.doctor.id,
+    slug: input.doctor.slug,
+    name: input.doctor.name,
+    specialization: input.doctor.specialization,
+    experienceYears: input.doctor.experienceYears,
+    rating: input.doctor.rating,
+    reviewCount: input.doctor.reviewCount,
+    nextAvailable: input.nextAvailable,
+    consultationModes: input.doctor.consultationModes,
+    bio: input.doctor.bio,
+    languages: input.doctor.languages,
+    clinic: input.doctor.clinic,
+    location: input.doctor.location,
+  };
+}
+
 function parseConversationId(conversationId: string) {
   const [userId, doctorProfileId] = conversationId.split("__");
 
@@ -155,6 +239,94 @@ function parseConversationId(conversationId: string) {
 
 function isActiveRelationshipBooking(booking: Pick<DbBooking, "status">) {
   return booking.status !== "rejected" && booking.status !== "cancelled";
+}
+
+async function getDoctorDocumentByProfileId(doctorProfileId: string) {
+  if (!isDatabaseConnected()) {
+    return null;
+  }
+
+  return (await Doctor.findOne({ doctorProfileId }).lean()) as DbDoctor | null;
+}
+
+async function getBookedSlotStartsForDoctor(doctorProfileId: string) {
+  if (!isDatabaseConnected()) {
+    return demoStore
+      .listBookingsForDoctor(doctorProfileId)
+      .filter((booking) => booking.status !== "rejected" && booking.status !== "cancelled")
+      .map((booking) => booking.scheduledAt);
+  }
+
+  const bookings = (await Booking.find({
+    doctorProfileId,
+    status: { $nin: ["rejected", "cancelled"] },
+  })
+    .select({ scheduledAt: 1 })
+    .lean()) as Array<Pick<DbBooking, "scheduledAt">>;
+
+  return bookings.map((booking) => toIso(booking.scheduledAt));
+}
+
+async function getDoctorAvailabilityConfig(doctorProfileId: string) {
+  const doctorRecord = await getDoctorDocumentByProfileId(doctorProfileId);
+  return getDoctorAvailabilityConfigFromSources(doctorProfileId, doctorRecord);
+}
+
+async function getNextAvailableSummary(doctorProfileId: string) {
+  const config = await getDoctorAvailabilityConfig(doctorProfileId);
+
+  if (!config) {
+    return "No upcoming slots";
+  }
+
+  const nextAvailable = findNextAvailableSlot({
+    availability: config.availability,
+    availabilityOverrides: config.availabilityOverrides,
+    blockedSlotStarts: config.blockedSlots.map((slot) => slot.startsAt),
+    bookedSlotStarts: await getBookedSlotStartsForDoctor(doctorProfileId),
+  });
+
+  return nextAvailable
+    ? formatRelativeAvailability(nextAvailable)
+    : "No upcoming slots";
+}
+
+async function assertDoctorSlotAvailable(doctorProfileId: string, scheduledAt: string) {
+  const config = await getDoctorAvailabilityConfig(doctorProfileId);
+
+  if (!config) {
+    throw new HttpError(404, "Selected doctor could not be found.");
+  }
+
+  const matchingSlot = getAvailabilitySlotsForDate({
+    date: getDateKey(scheduledAt),
+    availability: config.availability,
+    availabilityOverrides: config.availabilityOverrides,
+    blockedSlotStarts: config.blockedSlots.map((slot) => slot.startsAt),
+    bookedSlotStarts: await getBookedSlotStartsForDoctor(doctorProfileId),
+  }).find((slot) => slot.startsAt === scheduledAt);
+
+  if (!matchingSlot) {
+    throw new HttpError(
+      400,
+      "That time is outside the doctor's published availability.",
+    );
+  }
+
+  if (matchingSlot.status === "blocked") {
+    throw new HttpError(409, "That slot has been blocked by the doctor.");
+  }
+
+  if (matchingSlot.status === "booked") {
+    throw new HttpError(
+      409,
+      "That time slot is already booked. Please choose a different time.",
+    );
+  }
+
+  if (matchingSlot.status === "past") {
+    throw new HttpError(400, "Bookings must be scheduled in the future.");
+  }
 }
 
 function mapAuthenticatedUser(user: DbUser): AuthenticatedUser {
@@ -512,6 +684,160 @@ export async function authenticateUser(email: string, password: string) {
   return mapAuthenticatedUser(user);
 }
 
+export async function listPublicDoctors() {
+  if (!isDatabaseConnected()) {
+    return demoStore.listPublicDoctors();
+  }
+
+  return Promise.all(
+    mockDoctors.map(async (doctor) =>
+      mapPublicDoctorView({
+        doctor,
+        nextAvailable: await getNextAvailableSummary(doctor.id),
+      }),
+    ),
+  );
+}
+
+export async function getPublicDoctorBySlug(slug: string) {
+  if (!isDatabaseConnected()) {
+    return demoStore.getPublicDoctorBySlug(slug);
+  }
+
+  const doctor = mockDoctors.find((candidate) => candidate.slug === slug);
+
+  if (!doctor) {
+    return null;
+  }
+
+  return mapPublicDoctorView({
+    doctor,
+    nextAvailable: await getNextAvailableSummary(doctor.id),
+  });
+}
+
+export async function getDoctorAvailabilityForDate(
+  doctorProfileId: string,
+  date: string,
+): Promise<DoctorAvailabilityDateView> {
+  if (!isDatabaseConnected()) {
+    return demoStore.getDoctorAvailabilityForDate(doctorProfileId, date);
+  }
+
+  const config = await getDoctorAvailabilityConfig(doctorProfileId);
+
+  if (!config) {
+    throw new HttpError(404, "Doctor could not be found.");
+  }
+
+  return {
+    date,
+    doctor: {
+      id: config.profile.id,
+      name: config.profile.name,
+      specialization: config.profile.specialization,
+      location: config.profile.location,
+      consultationModes: config.profile.consultationModes,
+    },
+    nextAvailable:
+      findNextAvailableSlot({
+        availability: config.availability,
+        availabilityOverrides: config.availabilityOverrides,
+        blockedSlotStarts: config.blockedSlots.map((slot) => slot.startsAt),
+        bookedSlotStarts: await getBookedSlotStartsForDoctor(doctorProfileId),
+      }) ?? null,
+    slots: getAvailabilitySlotsForDate({
+      date,
+      availability: config.availability,
+      availabilityOverrides: config.availabilityOverrides,
+      blockedSlotStarts: config.blockedSlots.map((slot) => slot.startsAt),
+      bookedSlotStarts: await getBookedSlotStartsForDoctor(doctorProfileId),
+    }),
+  };
+}
+
+export async function getDoctorAvailability(
+  doctorProfileId: string,
+): Promise<DoctorAvailabilityManagerView> {
+  if (!isDatabaseConnected()) {
+    return demoStore.getDoctorAvailability(doctorProfileId);
+  }
+
+  const config = await getDoctorAvailabilityConfig(doctorProfileId);
+
+  if (!config) {
+    throw new HttpError(404, "Doctor could not be found.");
+  }
+
+  return {
+    doctor: {
+      id: config.profile.id,
+      name: config.profile.name,
+      specialization: config.profile.specialization,
+      consultationModes: config.profile.consultationModes,
+    },
+    availability: config.availability,
+    availabilityOverrides: config.availabilityOverrides,
+    blockedSlots: config.blockedSlots,
+    nextAvailable:
+      findNextAvailableSlot({
+        availability: config.availability,
+        availabilityOverrides: config.availabilityOverrides,
+        blockedSlotStarts: config.blockedSlots.map((slot) => slot.startsAt),
+        bookedSlotStarts: await getBookedSlotStartsForDoctor(doctorProfileId),
+      }) ?? null,
+  };
+}
+
+export async function updateDoctorAvailability(input: {
+  doctorProfileId: string;
+  availability: DoctorAvailabilityDay[];
+  availabilityOverrides: DoctorAvailabilityOverride[];
+  blockedSlots: DoctorBlockedSlot[];
+}) {
+  if (!isDatabaseConnected()) {
+    return demoStore.updateDoctorAvailability(input);
+  }
+
+  const config = await getDoctorAvailabilityConfig(input.doctorProfileId);
+
+  if (!config) {
+    throw new HttpError(404, "Doctor could not be found.");
+  }
+
+  const doctorUser = await findDoctorUserByProfileId(input.doctorProfileId);
+
+  if (!doctorUser) {
+    throw new HttpError(404, "Doctor account could not be found.");
+  }
+
+  await Doctor.updateOne(
+    { doctorProfileId: input.doctorProfileId },
+    {
+      $set: {
+        availability: normalizeWeeklyAvailability(input.availability),
+        availabilityOverrides: normalizeAvailabilityOverrides(
+          input.availabilityOverrides,
+        ),
+        blockedSlots: normalizeBlockedSlots(input.blockedSlots),
+      },
+      $setOnInsert: {
+        doctorProfileId: input.doctorProfileId,
+        userAppId: doctorUser.id,
+        specialization: config.profile.specialization,
+        experienceYears: config.profile.experienceYears,
+        bio: config.profile.bio,
+        languages: config.profile.languages,
+        ratingAverage: config.profile.rating,
+        reviewCount: config.profile.reviewCount,
+      },
+    },
+    { upsert: true },
+  );
+
+  return getDoctorAvailability(input.doctorProfileId);
+}
+
 export async function listPetsForUser(userId: string) {
   if (!isDatabaseConnected()) {
     return demoStore.listPetsForUser(userId);
@@ -566,7 +892,7 @@ export async function createBooking(input: CreateBookingInput) {
     throw new HttpError(404, "Booking owner could not be found.");
   }
 
-  const doctor = mockDoctors.find((candidate) => candidate.id === input.doctorProfileId);
+  const doctor = getMockDoctorProfile(input.doctorProfileId);
 
   if (!doctor) {
     throw new HttpError(404, "Selected doctor could not be found.");
@@ -596,18 +922,7 @@ export async function createBooking(input: CreateBookingInput) {
   }
 
   const normalizedScheduledAt = scheduledDate.toISOString();
-  const conflictingBooking = (await Booking.findOne({
-    doctorProfileId: doctor.id,
-    scheduledAt: new Date(normalizedScheduledAt),
-    status: { $nin: ["rejected", "cancelled"] },
-  }).lean()) as DbBooking | null;
-
-  if (conflictingBooking) {
-    throw new HttpError(
-      409,
-      "That time slot is already booked. Please choose a different time.",
-    );
-  }
+  await assertDoctorSlotAvailable(doctor.id, normalizedScheduledAt);
 
   const timestamp = createTimestamp();
   const booking = await Booking.create({

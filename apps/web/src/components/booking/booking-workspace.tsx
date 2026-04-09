@@ -4,29 +4,15 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CalendarClock, CheckCircle2, PawPrint, Plus, ShieldAlert } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
-import type { DoctorProfile } from "@/data/mock-doctors";
 import { api, createAuthHeaders, getApiErrorMessage, type ApiResponse } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
-import type { Booking, Pet } from "@/types/app";
-
-const timeOptions = [
-  "09:00",
-  "09:30",
-  "10:00",
-  "10:30",
-  "11:00",
-  "11:30",
-  "13:00",
-  "13:30",
-  "14:00",
-  "14:30",
-  "15:00",
-  "15:30",
-  "16:00",
-  "16:30",
-  "17:00",
-  "17:30",
-];
+import type {
+  Booking,
+  ConsultationMode,
+  DoctorAvailabilityDateView,
+  Pet,
+  PublicDoctorProfile,
+} from "@/types/app";
 
 function statusClasses(status: Booking["status"]) {
   if (status === "accepted") {
@@ -61,16 +47,18 @@ export function BookingWorkspace() {
   const { isAuthenticated, isLoading, session, user } = useAuth();
   const searchParams = useSearchParams();
   const doctorQuery = searchParams.get("doctor");
-  const [doctors, setDoctors] = useState<DoctorProfile[]>([]);
+  const [doctors, setDoctors] = useState<PublicDoctorProfile[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState(doctorQuery ?? "");
   const [selectedPetId, setSelectedPetId] = useState("");
-  const [consultationMode, setConsultationMode] = useState<"Clinic" | "Video">(
-    "Clinic",
-  );
+  const [consultationMode, setConsultationMode] =
+    useState<ConsultationMode>("Clinic");
   const [bookingDate, setBookingDate] = useState(getTomorrowDate());
-  const [bookingTime, setBookingTime] = useState("09:00");
+  const [availabilityData, setAvailabilityData] =
+    useState<DoctorAvailabilityDateView | null>(null);
+  const [selectedSlotStartsAt, setSelectedSlotStartsAt] = useState("");
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [bookingNotes, setBookingNotes] = useState("");
   const [petName, setPetName] = useState("");
   const [petType, setPetType] = useState("");
@@ -91,7 +79,7 @@ export function BookingWorkspace() {
     let isMounted = true;
 
     void api
-      .get<ApiResponse<DoctorProfile[]>>("/public/doctors")
+      .get<ApiResponse<PublicDoctorProfile[]>>("/public/doctors")
       .then((response) => {
         if (!isMounted) {
           return;
@@ -124,6 +112,81 @@ export function BookingWorkspace() {
 
     setSelectedDoctorId(doctorQuery);
   }, [doctorQuery]);
+
+  useEffect(() => {
+    if (!selectedDoctor) {
+      return;
+    }
+
+    setConsultationMode((currentMode) =>
+      selectedDoctor.consultationModes.includes(currentMode)
+        ? currentMode
+        : selectedDoctor.consultationModes[0] ?? "Clinic",
+    );
+  }, [selectedDoctor]);
+
+  useEffect(() => {
+    if (!selectedDoctorId) {
+      setAvailabilityData(null);
+      setSelectedSlotStartsAt("");
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingAvailability(true);
+
+    void api
+      .get<ApiResponse<DoctorAvailabilityDateView>>(
+        `/public/doctors/${selectedDoctorId}/availability`,
+        {
+          params: { date: bookingDate },
+        },
+      )
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const nextAvailability = response.data.data;
+        const firstAvailableSlot =
+          nextAvailability.slots.find((slot) => slot.isAvailable)?.startsAt ?? "";
+
+        setAvailabilityData(nextAvailability);
+        setErrorMessage(null);
+        setSelectedSlotStartsAt((currentSlot) => {
+          if (
+            currentSlot &&
+            nextAvailability.slots.some(
+              (slot) => slot.startsAt === currentSlot && slot.isAvailable,
+            )
+          ) {
+            return currentSlot;
+          }
+
+          return firstAvailableSlot;
+        });
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setAvailabilityData(null);
+        setSelectedSlotStartsAt("");
+        setErrorMessage(
+          getApiErrorMessage(error, "Unable to load live slot availability."),
+        );
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingAvailability(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [bookingDate, selectedDoctorId]);
 
   useEffect(() => {
     if (!session?.token || user?.role !== "user") {
@@ -222,6 +285,11 @@ export function BookingWorkspace() {
     setErrorMessage(null);
     setMessage(null);
 
+    if (!selectedSlotStartsAt) {
+      setErrorMessage("Select one available slot before creating the booking.");
+      return;
+    }
+
     if (!session?.token) {
       return;
     }
@@ -229,13 +297,12 @@ export function BookingWorkspace() {
     startBookingTransition(() => {
       void (async () => {
         try {
-          const scheduledAt = new Date(`${bookingDate}T${bookingTime}:00`);
           const response = await api.post<ApiResponse<Booking>>(
             "/bookings",
             {
               doctorProfileId: selectedDoctorId,
               petId: selectedPetId,
-              scheduledAt: scheduledAt.toISOString(),
+              scheduledAt: selectedSlotStartsAt,
               consultationMode,
               notes: bookingNotes,
             },
@@ -485,10 +552,7 @@ export function BookingWorkspace() {
                 <span className="text-sm font-medium text-[color:var(--pc-ink)]">Doctor</span>
                 <select
                   value={selectedDoctorId}
-                  onChange={(event) => {
-                    setSelectedDoctorId(event.target.value);
-                    setConsultationMode("Clinic");
-                  }}
+                  onChange={(event) => setSelectedDoctorId(event.target.value)}
                   className="w-full rounded-[1.2rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-3 text-sm text-[color:var(--pc-ink)] outline-none focus:border-[color:var(--pc-sky)]"
                   required
                 >
@@ -531,21 +595,23 @@ export function BookingWorkspace() {
                 />
               </label>
 
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-[color:var(--pc-ink)]">Time</span>
-                <select
-                  value={bookingTime}
-                  onChange={(event) => setBookingTime(event.target.value)}
-                  className="w-full rounded-[1.2rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-3 text-sm text-[color:var(--pc-ink)] outline-none focus:border-[color:var(--pc-sky)]"
-                  required
-                >
-                  {timeOptions.map((timeOption) => (
-                    <option key={timeOption} value={timeOption}>
-                      {timeOption}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="space-y-2 rounded-[1.2rem] border border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-[color:var(--pc-ink)]">
+                    Live availability
+                  </span>
+                  <span className="text-xs text-[color:var(--pc-muted)]">
+                    {selectedDoctor?.nextAvailable ?? "Schedule loading"}
+                  </span>
+                </div>
+                <p className="text-sm text-[color:var(--pc-muted)]">
+                  {isLoadingAvailability
+                    ? "Checking the latest published slots for this doctor."
+                    : availabilityData?.slots.some((slot) => slot.isAvailable)
+                      ? "Choose one of the currently open times below."
+                      : "No open slots for this date. Try another day or doctor."}
+                </p>
+              </div>
 
               <label className="space-y-2">
                 <span className="text-sm font-medium text-[color:var(--pc-ink)]">
@@ -577,9 +643,62 @@ export function BookingWorkspace() {
                 />
               </label>
 
+              <div className="space-y-3 sm:col-span-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-[color:var(--pc-ink)]">
+                    Select a slot
+                  </span>
+                  {availabilityData?.nextAvailable ? (
+                    <span className="text-xs text-[color:var(--pc-muted)]">
+                      Next open time {formatDateTime(availabilityData.nextAvailable)}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {availabilityData?.slots.length ? (
+                    availabilityData.slots.map((slot) => {
+                      const isSelected = selectedSlotStartsAt === slot.startsAt;
+
+                      return (
+                        <button
+                          key={slot.startsAt}
+                          type="button"
+                          disabled={!slot.isAvailable}
+                          onClick={() => setSelectedSlotStartsAt(slot.startsAt)}
+                          className={`rounded-[1.1rem] border px-4 py-3 text-left text-sm transition ${
+                            slot.isAvailable
+                              ? isSelected
+                                ? "border-[color:var(--pc-ink)] bg-[color:var(--pc-ink)] text-white"
+                                : "border-[color:var(--pc-line)] bg-white text-[color:var(--pc-ink)] hover:border-[color:var(--pc-sky)]"
+                              : "cursor-not-allowed border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] text-[color:var(--pc-muted)] opacity-70"
+                          }`}
+                        >
+                          <p className="font-semibold">{slot.label}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.14em]">
+                            {slot.status}
+                          </p>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-[1.2rem] border border-dashed border-[color:var(--pc-line)] bg-[color:var(--pc-surface)] px-4 py-5 text-sm text-[color:var(--pc-muted)] sm:col-span-2 lg:col-span-4">
+                      {isLoadingAvailability
+                        ? "Loading slots for this date."
+                        : "No schedule has been published for this date yet."}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <button
                 type="submit"
-                disabled={isSubmittingBooking || pets.length === 0}
+                disabled={
+                  isSubmittingBooking ||
+                  isLoadingAvailability ||
+                  pets.length === 0 ||
+                  !selectedSlotStartsAt
+                }
                 className="rounded-full bg-[color:var(--pc-ink)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSubmittingBooking ? "Creating booking..." : "Create booking"}

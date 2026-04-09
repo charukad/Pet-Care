@@ -1,3 +1,11 @@
+import {
+  createDefaultWeeklyAvailability,
+  type ConsultationMode,
+  type DoctorAvailabilityDay,
+  type DoctorAvailabilityOverride,
+  type DoctorBlockedSlot,
+} from "../utils/doctor-availability";
+
 export type PublicDoctor = {
   id: string;
   slug: string;
@@ -7,12 +15,29 @@ export type PublicDoctor = {
   rating: number;
   reviewCount: number;
   nextAvailable: string;
-  consultationModes: string[];
+  consultationModes: ConsultationMode[];
   bio: string;
   languages: string[];
   clinic: string;
   location: string;
+  availability: DoctorAvailabilityDay[];
+  availabilityOverrides: DoctorAvailabilityOverride[];
+  blockedSlots: DoctorBlockedSlot[];
 };
+
+function createAvailabilitySeed(
+  overrides: Partial<{
+    availability: DoctorAvailabilityDay[];
+    availabilityOverrides: DoctorAvailabilityOverride[];
+    blockedSlots: DoctorBlockedSlot[];
+  }> = {},
+) {
+  return {
+    availability: overrides.availability ?? createDefaultWeeklyAvailability(),
+    availabilityOverrides: overrides.availabilityOverrides ?? [],
+    blockedSlots: overrides.blockedSlots ?? [],
+  };
+}
 
 export const mockDoctors: PublicDoctor[] = [
   {
@@ -29,6 +54,7 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala"],
     clinic: "Green Paws Veterinary Centre",
     location: "Colombo",
+    ...createAvailabilitySeed(),
   },
   {
     id: "dr-nadeesha-perera",
@@ -44,6 +70,45 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala"],
     clinic: "Blue Haven Animal Care",
     location: "Nugegoda",
+    ...createAvailabilitySeed({
+      availability: [
+        {
+          dayOfWeek: "monday",
+          windows: [{ start: "10:00", end: "13:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "tuesday",
+          windows: [{ start: "10:00", end: "15:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "wednesday",
+          windows: [{ start: "10:00", end: "15:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "thursday",
+          windows: [{ start: "10:00", end: "15:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "friday",
+          windows: [{ start: "10:00", end: "14:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "saturday",
+          windows: [{ start: "09:00", end: "12:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "sunday",
+          windows: [],
+          isActive: false,
+        },
+      ],
+    }),
   },
   {
     id: "dr-kasun-ranathunga",
@@ -59,6 +124,45 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala"],
     clinic: "PetCare Surgical Hub",
     location: "Battaramulla",
+    ...createAvailabilitySeed({
+      availability: [
+        {
+          dayOfWeek: "monday",
+          windows: [{ start: "08:30", end: "12:30" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "tuesday",
+          windows: [{ start: "08:30", end: "12:30" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "wednesday",
+          windows: [],
+          isActive: false,
+        },
+        {
+          dayOfWeek: "thursday",
+          windows: [{ start: "12:30", end: "17:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "friday",
+          windows: [{ start: "12:30", end: "17:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "saturday",
+          windows: [{ start: "09:00", end: "13:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "sunday",
+          windows: [],
+          isActive: false,
+        },
+      ],
+    }),
   },
   {
     id: "dr-ishara-silva",
@@ -74,6 +178,45 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English"],
     clinic: "Happy Tails Wellness Studio",
     location: "Dehiwala",
+    ...createAvailabilitySeed({
+      availability: [
+        {
+          dayOfWeek: "monday",
+          windows: [{ start: "16:00", end: "20:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "tuesday",
+          windows: [{ start: "16:00", end: "20:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "wednesday",
+          windows: [{ start: "16:00", end: "20:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "thursday",
+          windows: [{ start: "16:00", end: "20:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "friday",
+          windows: [{ start: "16:00", end: "20:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "saturday",
+          windows: [],
+          isActive: false,
+        },
+        {
+          dayOfWeek: "sunday",
+          windows: [{ start: "10:00", end: "14:00" }],
+          isActive: true,
+        },
+      ],
+    }),
   },
   {
     id: "dr-tharindu-fernando",
@@ -89,6 +232,45 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala", "Tamil"],
     clinic: "24/7 Paw Response Unit",
     location: "Colombo",
+    ...createAvailabilitySeed({
+      availability: [
+        {
+          dayOfWeek: "monday",
+          windows: [{ start: "18:00", end: "22:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "tuesday",
+          windows: [{ start: "18:00", end: "22:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "wednesday",
+          windows: [{ start: "18:00", end: "22:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "thursday",
+          windows: [{ start: "18:00", end: "22:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "friday",
+          windows: [{ start: "18:00", end: "22:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "saturday",
+          windows: [{ start: "12:00", end: "18:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "sunday",
+          windows: [{ start: "12:00", end: "18:00" }],
+          isActive: true,
+        },
+      ],
+    }),
   },
   {
     id: "dr-senuri-wijesinghe",
@@ -104,5 +286,44 @@ export const mockDoctors: PublicDoctor[] = [
     languages: ["English", "Sinhala"],
     clinic: "Little Paws and Wings",
     location: "Mount Lavinia",
+    ...createAvailabilitySeed({
+      availability: [
+        {
+          dayOfWeek: "monday",
+          windows: [],
+          isActive: false,
+        },
+        {
+          dayOfWeek: "tuesday",
+          windows: [{ start: "09:30", end: "13:30" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "wednesday",
+          windows: [],
+          isActive: false,
+        },
+        {
+          dayOfWeek: "thursday",
+          windows: [{ start: "09:30", end: "13:30" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "friday",
+          windows: [],
+          isActive: false,
+        },
+        {
+          dayOfWeek: "saturday",
+          windows: [{ start: "10:00", end: "15:00" }],
+          isActive: true,
+        },
+        {
+          dayOfWeek: "sunday",
+          windows: [],
+          isActive: false,
+        },
+      ],
+    }),
   },
 ];
